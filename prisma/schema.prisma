@@ -1,0 +1,173 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Authorized broker. Identified by phone number.
+model Broker {
+  id           String   @id @default(cuid())
+  phoneNumber  String   @unique
+  fullName     String
+  businessName String?
+  status       String   @default("active")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  properties     Property[]
+  socialAccounts SocialAccount[]
+  facebookGroups FacebookGroup[]
+  conversations  Conversation[]
+
+  @@index([status])
+}
+
+/// Public property identity card. Owner details live in a separate table.
+model Property {
+  id            String   @id @default(cuid())
+  seq           Int      @unique @default(autoincrement())
+  code          String   @unique
+  brokerId      String
+  broker        Broker   @relation(fields: [brokerId], references: [id])
+  address       String?
+  city          String?
+  neighborhood  String?
+  rooms         Float?
+  floor         String?
+  sizeSqm       Float?
+  price         Int?
+  amenities     Json?
+  vacancyDate   String?
+  featuresText  String?
+  status        String   @default("draft")
+  marketingText String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  media         PropertyMedia[]
+  owner         OwnerPrivateInfo?
+  conversations Conversation[]
+  publications  Publication[]
+
+  @@index([brokerId, status])
+  @@index([city])
+}
+
+model PropertyMedia {
+  id             String        @id @default(cuid())
+  propertyId     String?
+  property       Property?     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  conversationId String?
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  mediaType      String
+  cloudUrl       String
+  storageKey     String?
+  tags           Json?
+  caption        String?
+  createdAt      DateTime      @default(now())
+
+  @@index([propertyId])
+  @@index([conversationId])
+}
+
+/// Private owner record. Never loaded into the AI context and never sent to a lead.
+model OwnerPrivateInfo {
+  id           String   @id @default(cuid())
+  propertyId   String   @unique
+  property     Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  ownerName    String?
+  ownerPhone   String?
+  privateNotes String?
+  createdAt    DateTime @default(now())
+}
+
+model Conversation {
+  id          String    @id @default(cuid())
+  brokerId    String?
+  broker      Broker?   @relation(fields: [brokerId], references: [id], onDelete: SetNull)
+  leadPhone   String?
+  brokerPhone String?
+  contactName String?
+  role        String
+  propertyId  String?
+  property    Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  status      String    @default("active")
+  flowStep    String    @default("idle")
+  flowData    Json?
+  summary     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  messages Message[]
+  media    PropertyMedia[]
+
+  @@index([leadPhone, status])
+  @@index([brokerPhone, status])
+  @@index([brokerId, status])
+  @@index([propertyId])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         String
+  text           String?
+  mediaUrl       String?
+  externalId     String?      @unique
+  timestamp      DateTime     @default(now())
+
+  @@index([conversationId, timestamp])
+}
+
+model SocialAccount {
+  id          String   @id @default(cuid())
+  brokerId    String
+  broker      Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  platform    String
+  accountId   String
+  accountName String?
+  accessToken String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([brokerId, platform])
+}
+
+model FacebookGroup {
+  id        String   @id @default(cuid())
+  brokerId  String
+  broker    Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  groupId   String
+  name      String
+  createdAt DateTime @default(now())
+
+  @@unique([brokerId, groupId])
+}
+
+model Publication {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  platform   String
+  targetId   String?
+  targetName String?
+  postId     String?
+  postUrl    String?
+  waLink     String?
+  caption    String?
+  status     String
+  error      String?
+  createdAt  DateTime @default(now())
+
+  @@index([propertyId])
+}
+
+model InboundEvent {
+  id        String   @id
+  createdAt DateTime @default(now())
+}
