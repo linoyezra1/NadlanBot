@@ -13,8 +13,10 @@ export const config = {
   publicBaseUrl: text('PUBLIC_BASE_URL', `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, ''),
   twilioAccountSid: text('TWILIO_ACCOUNT_SID'),
   twilioAuthToken: text('TWILIO_AUTH_TOKEN'),
+  twilioWhatsappNumber: text('TWILIO_WHATSAPP_NUMBER'),
+  twilioMessagingServiceSid: text('TWILIO_MESSAGING_SERVICE_SID'),
   twilioContentSid: text('TWILIO_CONTENT_SID'),
-  whatsappDisplayNumber: text('WHATSAPP_DISPLAY_NUMBER'),
+  whatsappDisplayNumber: text('WHATSAPP_DISPLAY_NUMBER') || text('TWILIO_WHATSAPP_NUMBER').replace(/\D/g, ''),
   graphVersion: text('META_GRAPH_VERSION', 'v21.0'),
   openaiApiKey: text('OPENAI_API_KEY'),
   openaiModel: text('OPENAI_MODEL', 'gpt-4o-mini'),
@@ -46,7 +48,7 @@ export const config = {
 
 export function integrationStatus() {
   return {
-    whatsapp: Boolean(config.twilioAccountSid && config.twilioAuthToken && config.whatsappDisplayNumber),
+    whatsapp: Boolean(config.twilioAccountSid && config.twilioAuthToken && (config.twilioWhatsappNumber || config.twilioMessagingServiceSid)),
     openai: Boolean(config.openaiApiKey),
     storage: config.storageProvider || 'local',
     metaPage: Boolean(config.metaPageId && config.metaPageAccessToken),
@@ -58,11 +60,11 @@ export function integrationStatus() {
 
 export function integrationWarnings() {
   const warnings = [];
-  if (!config.twilioAccountSid || !config.twilioAuthToken || !config.whatsappDisplayNumber) {
-    warnings.push('Twilio WhatsApp is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and WHATSAPP_DISPLAY_NUMBER. Messages will be stored but not delivered.');
-  }
-  if (!config.whatsappDisplayNumber) {
-    warnings.push('WHATSAPP_DISPLAY_NUMBER is empty, so click-to-WhatsApp links cannot be built yet.');
+  const twilioReady = config.twilioAccountSid && config.twilioAuthToken && (config.twilioWhatsappNumber || config.twilioMessagingServiceSid);
+  if (!twilioReady) {
+    warnings.push('Twilio WhatsApp is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_WHATSAPP_NUMBER or TWILIO_MESSAGING_SERVICE_SID. Messages will be stored but not delivered.');
+  } else if (!config.whatsappDisplayNumber) {
+    warnings.push('TWILIO_WHATSAPP_NUMBER is empty, so click-to-WhatsApp links cannot be built yet.');
   }
   if (!config.openaiApiKey) {
     warnings.push('OPENAI_API_KEY is empty. Lead chat and field extraction use the built-in fallback.');

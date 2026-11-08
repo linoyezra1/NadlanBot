@@ -20,7 +20,7 @@ router.post('/', (req, res) => {
   } catch (error) {
     logger.error('webhook parse failed', error.message);
   }
-  res.sendStatus(200);
+  res.type('text/xml').status(200).send('<Response></Response>');
   for (const event of events) {
     handleIncoming(event)
       .then((result) => deliverResult(event, result))

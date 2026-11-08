@@ -1,3 +1,4 @@
+import twilio from 'twilio';
 import { config } from '../config.js';
 import { expandReplies, text } from '../domain/replies.js';
 import { logger } from '../logger.js';
@@ -5,7 +6,7 @@ import { logger } from '../logger.js';
 const SESSION_LIMIT = 1500;
 
 export function whatsappConfigured() {
-  return Boolean(config.twilioAccountSid && config.twilioAuthToken && config.whatsappDisplayNumber);
+  return Boolean(config.twilioAccountSid && config.twilioAuthToken && (config.twilioWhatsappNumber || config.twilioMessagingServiceSid));
 }
 
 export function whatsappAddress(phone) {
@@ -21,13 +22,13 @@ export function isTwilioMediaUrl(url) {
   }
 }
 
+function twilioClient() {
+  return twilio(config.twilioAccountSid, config.twilioAuthToken);
+}
+
 function authHeader() {
   const token = Buffer.from(`${config.twilioAccountSid}:${config.twilioAuthToken}`).toString('base64');
   return `Basic ${token}`;
-}
-
-function endpoint() {
-  return `https://api.twilio.com/2010-04-01/Accounts/${config.twilioAccountSid}/Messages.json`;
 }
 
 function contentSid() {
@@ -35,27 +36,9 @@ function contentSid() {
   return config.brokerTemplateName.startsWith('HX') ? config.brokerTemplateName : '';
 }
 
-async function postMessage(fields) {
-  const body = new URLSearchParams();
-  for (const [key, value] of Object.entries(fields)) {
-    if (value != null && value !== '') body.set(key, String(value));
-  }
-  const response = await fetch(endpoint(), {
-    method: 'POST',
-    headers: {
-      Authorization: authHeader(),
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body,
-    signal: AbortSignal.timeout(20000),
-  });
-  const json = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(json.message || `Twilio HTTP ${response.status}`);
-    error.code = Number(json.code) || response.status;
-    throw error;
-  }
-  return json.sid || null;
+function senderFields() {
+  if (config.twilioMessagingServiceSid) return { messagingServiceSid: config.twilioMessagingServiceSid };
+  return { from: whatsappAddress(config.twilioWhatsappNumber) };
 }
 
 function replyBody(reply) {
@@ -64,21 +47,18 @@ function replyBody(reply) {
   return [reply.text, ...choices].filter(Boolean).join('\n');
 }
 
-function fieldsFor(to, reply) {
-  const from = whatsappAddress(config.whatsappDisplayNumber);
-  if (reply.type === 'image' || reply.type === 'video') {
-    return {
-      From: from,
-      To: whatsappAddress(to),
-      Body: reply.caption || '',
-      MediaUrl: reply.url,
-    };
-  }
-  return {
-    From: from,
-    To: whatsappAddress(to),
-    Body: replyBody(reply),
+function messageFields(to, reply) {
+  const fields = {
+    ...senderFields(),
+    to: whatsappAddress(to),
   };
+  if (reply.type === 'image' || reply.type === 'video') {
+    fields.body = reply.caption || '';
+    fields.mediaUrl = [reply.url];
+    return fields;
+  }
+  fields.body = replyBody(reply);
+  return fields;
 }
 
 function pieces(reply) {
@@ -93,17 +73,20 @@ function pieces(reply) {
 }
 
 async function sendOne(to, reply) {
+  const client = twilioClient();
   try {
-    return await postMessage(fieldsFor(to, reply));
+    const message = await client.messages.create(messageFields(to, reply));
+    return message.sid || null;
   } catch (error) {
     const sid = contentSid();
     if (error.code === 63016 && sid && (reply.type === 'text' || reply.type === 'buttons')) {
-      return postMessage({
-        From: whatsappAddress(config.whatsappDisplayNumber),
-        To: whatsappAddress(to),
-        ContentSid: sid,
-        ContentVariables: JSON.stringify({ 1: replyBody(reply).replace(/\s+/g, ' ').slice(0, 900) }),
+      const message = await client.messages.create({
+        ...senderFields(),
+        to: whatsappAddress(to),
+        contentSid: sid,
+        contentVariables: JSON.stringify({ 1: replyBody(reply).replace(/\s+/g, ' ').slice(0, 900) }),
       });
+      return message.sid || null;
     }
     throw error;
   }
@@ -133,7 +116,9 @@ export async function deliver(to, replies) {
 }
 
 export async function downloadWhatsAppMedia(mediaUrl) {
-  if (!whatsappConfigured()) throw new Error('לא הוגדר חיבור לוואטסאפ, אי אפשר למשוך את הקובץ.');
+  if (!config.twilioAccountSid || !config.twilioAuthToken) {
+    throw new Error('לא הוגדר חיבור לוואטסאפ, אי אפשר למשוך את הקובץ.');
+  }
   const file = await fetch(mediaUrl, {
     headers: { Authorization: authHeader() },
     signal: AbortSignal.timeout(30000),

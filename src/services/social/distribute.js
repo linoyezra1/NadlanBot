@@ -15,7 +15,7 @@ function label(result) {
 
 export function summarizeResults(results, waLink) {
   const lines = ['סיימתי לטפל בפרסום.'];
-  lines.push(waLink ? `קישור הלידים:\n${waLink}` : 'חסר WHATSAPP_DISPLAY_NUMBER, ולכן אין עדיין קישור wa.me.');
+  lines.push(waLink ? `קישור הלידים:\n${waLink}` : 'חסר TWILIO_WHATSAPP_NUMBER, ולכן אין עדיין קישור wa.me.');
   for (const result of results) {
     const ok = result.status === 'published' || result.status === 'processing';
     const detail = result.error || result.postUrl || (result.status === 'processing' ? 'הסרטון התקבל וממתין לעיבוד' : '');

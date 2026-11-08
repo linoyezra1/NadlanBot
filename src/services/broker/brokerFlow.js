@@ -155,7 +155,7 @@ async function beginMarketing(conversation, flow) {
   const waLink = clickToWhatsAppLink(flow.code);
   if (!waLink) {
     await saveFlow(conversation.id, { status: 'closed', flowStep: 'done', flow });
-    return [text(`הנכס ${flow.code} שמור, אבל חסר WHATSAPP_DISPLAY_NUMBER ולכן אי אפשר לבנות קישור wa.me. אחרי ההגדרה כתוב: פרסם ${flow.code}`)];
+    return [text(`הנכס ${flow.code} שמור, אבל חסר TWILIO_WHATSAPP_NUMBER ולכן אי אפשר לבנות קישור wa.me. אחרי ההגדרה כתוב: פרסם ${flow.code}`)];
   }
   const marketingText = await generateMarketing(flow.fields, waLink);
   flow.marketingText = marketingText;

@@ -48,7 +48,7 @@ npm run demo
 המערכת לא משתמשת בסקרייפינג. צריך:
 
 1. ב-Twilio, ב-WhatsApp Sender, ה-Webhook הוא `POST https://<הדומיין>/webhook`.
-2. `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` ו-`WHATSAPP_DISPLAY_NUMBER` של המספר השולח.
+2. `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, ו-`TWILIO_WHATSAPP_NUMBER` או `TWILIO_MESSAGING_SERVICE_SID`.
 3. `PUBLIC_BASE_URL` חייב להיות אותו דומיין ציבורי, כי חתימת Twilio נבדקת מולו. בפרודקשן בלי `TWILIO_AUTH_TOKEN` הקריאות נדחות.
 4. לפרסום בפייסבוק: `META_PAGE_ID` ו-`META_PAGE_ACCESS_TOKEN` עם `pages_manage_posts`. לאינסטגרם גם `META_IG_USER_ID` ו-`instagram_content_publish`.
 
