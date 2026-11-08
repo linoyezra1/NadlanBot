@@ -1,0 +1,258 @@
+import {
+  addressLine,
+  amenitiesLine,
+  customerName,
+  escapeHtml,
+  formatPhone,
+  formatWhen,
+  href,
+  leadStatus,
+  money,
+  pill,
+  place,
+  propertyStatus,
+  tagLabel,
+} from './format.js';
+import { layout } from './layout.js';
+
+function photo(url, label) {
+  const image = url
+    ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(label || '')}" onerror="this.classList.add('broken')">`
+    : '';
+  return `<div class="photo">${image}<div class="placeholder">אין תמונה</div></div>`;
+}
+
+function propertyCard(property, token) {
+  const cover = property.media?.[0];
+  const [statusLabel, tone] = propertyStatus(property.status);
+  const leads = property.conversations || [];
+  const hot = leads.filter((lead) => lead.status === 'converted_hot_lead').length;
+  const bits = [
+    property.rooms != null ? `${property.rooms} חדרים` : null,
+    property.floor ? `קומה ${property.floor}` : null,
+    property.sizeSqm != null ? `${property.sizeSqm} מ"ר` : null,
+  ].filter(Boolean);
+  return `<a class="card" href="${href(token, `/properties/${encodeURIComponent(property.code)}`)}">
+    ${photo(cover?.cloudUrl, property.code)}
+    <div class="body">
+      <div class="code">${escapeHtml(property.code)} ${pill(statusLabel, tone)}</div>
+      <div class="price">${escapeHtml(money(property.price))}</div>
+      <div>${escapeHtml(property.address || place(property) || 'כתובת לא הוזנה')}</div>
+      <div class="muted">${escapeHtml(place(property))}</div>
+      <div class="facts">${bits.map((bit) => `<span class="chip">${escapeHtml(bit)}</span>`).join('')}</div>
+      <div class="muted">${leads.length} לקוחות${hot ? ` · ${hot} לידים חמים` : ''}</div>
+    </div>
+  </a>`;
+}
+
+function personRow(lead, token) {
+  const [label, tone] = leadStatus(lead.status);
+  const snippet = String(lead.messages?.[0]?.text || lead.summary || '').replace(/\s+/g, ' ').trim();
+  return `<a class="card person" href="${href(token, `/leads/${encodeURIComponent(lead.id)}`)}">
+    <div>
+      <strong>${escapeHtml(customerName(lead))}</strong>
+      <span class="muted">${escapeHtml(formatPhone(lead.leadPhone))}</span>
+    </div>
+    <div>
+      <div>${escapeHtml(lead.property?.code || 'בלי נכס')}</div>
+      <div class="muted">${escapeHtml(snippet ? snippet.slice(0, 90) : 'אין עדיין סיכום')}</div>
+    </div>
+    <div>${pill(label, tone)}<div class="muted">${escapeHtml(formatWhen(lead.updatedAt))}</div></div>
+  </a>`;
+}
+
+function page(token, title, active, body) {
+  return layout({ title, active, token, body });
+}
+
+export function dashboardPage(token, data) {
+  const recent = data.properties.length
+    ? `<div class="cards">${data.properties.map((property) => propertyCard(property, token)).join('')}</div>`
+    : '<div class="empty">עדיין אין נכסים. ברגע שהמתווך שולח לבוט "דירה חדשה", הנכס מופיע כאן.</div>';
+  const hot = data.hotLeads.length
+    ? `<div class="people">${data.hotLeads.map((lead) => personRow(lead, token)).join('')}</div>`
+    : '<div class="empty">אין עדיין ליד שביקש סיור או שיחה.</div>';
+  return page(token, 'סקירה', 'home', `
+    <header class="page-head">
+      <div>
+        <h1>סקירה</h1>
+        <p>הנכסים שהבוט קלט, והלקוחות שפנו מהוואטסאפ.</p>
+      </div>
+    </header>
+    <section class="stats">
+      <article class="stat"><span>נכסים</span><b>${data.propertyCount}</b></article>
+      <article class="stat"><span>לקוחות</span><b>${data.leadCount}</b></article>
+      <article class="stat hot"><span>לידים חמים</span><b>${data.hotCount}</b></article>
+      <article class="stat"><span>שיחות פתוחות</span><b>${data.openCount}</b></article>
+    </section>
+    <div class="layout">
+      <section class="panel"><h2>נכסים אחרונים</h2>${recent}</section>
+      <section class="panel"><h2>לידים חמים</h2>${hot}</section>
+    </div>`);
+}
+
+export function propertiesPage(token, properties, query) {
+  const cards = properties.length
+    ? `<div class="cards">${properties.map((property) => propertyCard(property, token)).join('')}</div>`
+    : `<div class="empty">${query ? 'אין נכס שמתאים לחיפוש.' : 'עדיין אין נכסים. המתווך שולח לבוט "דירה חדשה" והכרטיס נשמר כאן.'}</div>`;
+  return page(token, 'נכסים', 'properties', `
+    <header class="page-head">
+      <div>
+        <h1>נכסים</h1>
+        <p>${properties.length} נכסים שהבוט שמר.</p>
+      </div>
+      <form class="search" method="get" action="/properties">
+        ${token ? `<input type="hidden" name="token" value="${escapeHtml(token)}">` : ''}
+        <input name="q" value="${escapeHtml(query)}" placeholder="עיר, כתובת או APT-101">
+        <button type="submit">חיפוש</button>
+      </form>
+    </header>
+    ${cards}`);
+}
+
+export function propertyPage(token, property) {
+  const [statusLabel, tone] = propertyStatus(property.status);
+  const bits = [
+    ['חדרים', property.rooms],
+    ['קומה', property.floor],
+    ['שטח', property.sizeSqm != null ? `${property.sizeSqm} מ"ר` : null],
+    ['פינוי', property.vacancyDate],
+    ['שכונה', property.neighborhood],
+    ['עיר', property.city],
+    ['מתווך', property.broker?.fullName],
+  ].filter(([, value]) => value != null && value !== '');
+  const amenity = amenitiesLine(property.amenities);
+  const gallery = property.media.length
+    ? `<div class="gallery">${property.media.map((item) => {
+      const tags = Array.isArray(item.tags) ? item.tags.map(tagLabel).join(', ') : '';
+      return `<figure><img src="${escapeHtml(item.cloudUrl)}" alt="${escapeHtml(item.caption || tags)}" onerror="this.classList.add('broken')"><figcaption>${escapeHtml(item.caption || tags || item.mediaType)}</figcaption></figure>`;
+    }).join('')}</div>`
+    : '<div class="empty">לנכס הזה עדיין אין מדיה.</div>';
+  const leads = property.conversations.length
+    ? `<div class="people">${property.conversations.map((lead) => personRow({ ...lead, property, messages: [] }, token)).join('')}</div>`
+    : '<div class="empty">אף לקוח עדיין לא פנה על הנכס הזה.</div>';
+  const publications = property.publications.length
+    ? `<ul>${property.publications.map((item) => `<li>${escapeHtml(item.platform)} · ${escapeHtml(item.status)}${item.error ? ` · ${escapeHtml(item.error)}` : ''}</li>`).join('')}</ul>`
+    : '<p class="muted">הנכס עוד לא נשלח לרשתות.</p>';
+  return page(token, property.code, 'properties', `
+    <header class="page-head">
+      <div>
+        <h1>${escapeHtml(property.code)}</h1>
+        <p>${escapeHtml(addressLine(property))} ${pill(statusLabel, tone)}</p>
+      </div>
+      <div class="price">${escapeHtml(money(property.price))}</div>
+    </header>
+    <div class="split">
+      <div>
+        <section class="block"><h2>תמונות וסרטונים</h2>${gallery}</section>
+        <section class="block"><h2>לקוחות שפנו על הנכס</h2>${leads}</section>
+      </div>
+      <div>
+        <section class="block">
+          <h2>תעודת הנכס</h2>
+          <dl class="kv">
+            <dt>כתובת</dt><dd>${escapeHtml(property.address || '—')}</dd>
+            ${bits.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}
+            ${amenity ? `<dt>מאפיינים</dt><dd>${escapeHtml(amenity)}</dd>` : ''}
+          </dl>
+          ${property.featuresText ? `<p>${escapeHtml(property.featuresText)}</p>` : ''}
+        </section>
+        <section class="block private">
+          <h2>בעלים, חסוי</h2>
+          <dl class="kv">
+            <dt>שם</dt><dd>${escapeHtml(property.owner?.ownerName || '—')}</dd>
+            <dt>טלפון</dt><dd>${escapeHtml(formatPhone(property.owner?.ownerPhone) || '—')}</dd>
+            <dt>הערות</dt><dd>${escapeHtml(property.owner?.privateNotes || '—')}</dd>
+          </dl>
+        </section>
+        <section class="block">
+          <h2>פרסום</h2>
+          ${property.marketingText ? `<p class="handed">${escapeHtml(property.marketingText)}</p>` : ''}
+          ${publications}
+        </section>
+      </div>
+    </div>`);
+}
+
+function filters(token, current) {
+  const items = [
+    ['', 'הכל'],
+    ['hot', 'ליד חם'],
+    ['active', 'בשיחה'],
+    ['closed', 'נסגר'],
+  ];
+  return `<nav class="filters">${items.map(([value, label]) => {
+    const path = value ? `/leads?status=${value}` : '/leads';
+    const active = (current || '') === value ? 'active' : '';
+    return `<a class="${active}" href="${href(token, path)}">${label}</a>`;
+  }).join('')}</nav>`;
+}
+
+export function leadsPage(token, leads, filter) {
+  const empty = filter
+    ? 'אין לקוחות בסינון הזה.'
+    : 'עדיין לא הגיע לקוח מהוואטסאפ. כשמישהו נכנס מקישור המודעה, הוא מופיע כאן עם מה שהבוט ענה לו.';
+  const rows = leads.length
+    ? `<div class="people">${leads.map((lead) => personRow(lead, token)).join('')}</div>`
+    : `<div class="empty">${empty}</div>`;
+  return page(token, 'לקוחות', 'leads', `
+    <header class="page-head">
+      <div>
+        <h1>לקוחות</h1>
+        <p>פניות שנפתחו מול הבוט, והפרטים שהוא מסר.</p>
+      </div>
+    </header>
+    ${filters(token, filter)}
+    ${rows}`);
+}
+
+function messageItem(message) {
+  const sender = ['lead', 'bot', 'notice'].includes(message.sender) ? message.sender : 'bot';
+  const who = sender === 'lead' ? 'לקוח' : sender === 'notice' ? 'נשלח למתווך' : 'הבוט';
+  const image = message.mediaUrl
+    ? `<img src="${escapeHtml(message.mediaUrl)}" alt="" onerror="this.classList.add('broken')">`
+    : '';
+  return `<li class="msg ${sender}"><strong>${who}</strong>\n${escapeHtml(message.text || '')}${image}<time>${escapeHtml(formatWhen(message.timestamp))}</time></li>`;
+}
+
+export function leadPage(token, lead) {
+  const [label, tone] = leadStatus(lead.status);
+  const botMessages = lead.messages.filter((message) => message.sender === 'bot' && (message.text || message.mediaUrl));
+  const given = botMessages.length
+    ? `<ol class="thread">${botMessages.map(messageItem).join('')}</ol>`
+    : '<div class="empty">הבוט עדיין לא שמר מענה בשיחה הזו.</div>';
+  const property = lead.property;
+  const propertyBlock = property
+    ? `<a class="card" href="${href(token, `/properties/${encodeURIComponent(property.code)}`)}">
+        ${photo(property.media?.[0]?.cloudUrl, property.code)}
+        <div class="mini"><div class="code">${escapeHtml(property.code)}</div><strong>${escapeHtml(money(property.price))}</strong><div>${escapeHtml(addressLine(property))}</div></div>
+      </a>`
+    : '<div class="empty">השיחה לא קושרה לנכס.</div>';
+  const phone = lead.leadPhone || '';
+  return page(token, customerName(lead), 'leads', `
+    <header class="page-head">
+      <div>
+        <h1>${escapeHtml(customerName(lead))} ${pill(label, tone)}</h1>
+        <p class="row-links">
+          <span>${escapeHtml(formatPhone(phone))}</span>
+          ${phone ? `<a href="https://wa.me/${escapeHtml(phone.replace(/\D/g, ''))}">וואטסאפ</a>` : ''}
+          ${phone ? `<a href="tel:+${escapeHtml(phone.replace(/\D/g, ''))}">חיוג</a>` : ''}
+        </p>
+      </div>
+      <div class="muted">עודכן ${escapeHtml(formatWhen(lead.updatedAt))}</div>
+    </header>
+    <div class="split">
+      <div>
+        <section class="block"><h2>הפרטים שהבוט מסר</h2>${given}</section>
+        <section class="block"><h2>כל השיחה</h2><ol class="thread">${lead.messages.map(messageItem).join('') || '<li class="muted">אין הודעות</li>'}</ol></section>
+      </div>
+      <div>
+        ${lead.summary ? `<section class="block"><h2>סיכום ליד חם</h2><div class="handed">${escapeHtml(lead.summary)}</div></section>` : ''}
+        <section class="block"><h2>הנכס בשיחה</h2>${propertyBlock}</section>
+      </div>
+    </div>`);
+}
+
+export function missingPage(token, active, title, text) {
+  return page(token, title, active, `<header class="page-head"><div><h1>${escapeHtml(title)}</h1><p>${escapeHtml(text)}</p></div></header>`);
+}
