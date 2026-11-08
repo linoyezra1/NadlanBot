@@ -37,7 +37,6 @@ export const config = {
   tiktokPrivacyLevel: text('TIKTOK_PRIVACY_LEVEL', 'SELF_ONLY'),
   brokerTemplateName: text('WHATSAPP_BROKER_TEMPLATE_NAME'),
   brokerTemplateLang: text('WHATSAPP_BROKER_TEMPLATE_LANG', 'he'),
-  adminToken: text('ADMIN_TOKEN'),
   autoSeed: text('AUTO_SEED') === 'true',
   initialBrokerPhone: text('INITIAL_BROKER_PHONE'),
   initialBrokerName: text('INITIAL_BROKER_NAME'),
@@ -75,9 +74,6 @@ export function integrationWarnings() {
   }
   if (config.nodeEnv === 'production' && !config.metaAppSecret) {
     warnings.push('META_APP_SECRET is empty. Webhook posts are rejected in production until it is set.');
-  }
-  if (config.nodeEnv === 'production' && !config.adminToken) {
-    warnings.push('ADMIN_TOKEN is empty. The admin console is closed in production.');
   }
   return warnings;
 }

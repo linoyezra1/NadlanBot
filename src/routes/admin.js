@@ -1,18 +1,12 @@
 import express from 'express';
 import crypto from 'node:crypto';
-import { config, integrationStatus } from '../config.js';
+import { integrationStatus } from '../config.js';
 import { normalizePhone } from '../domain/phone.js';
 import { prisma } from '../db.js';
 import { deliverResult } from '../services/deliverAll.js';
 import { handleIncoming } from '../services/router.js';
 
 const router = express.Router();
-
-function allowed(req) {
-  if (!config.adminToken) return config.nodeEnv !== 'production';
-  const presented = req.get('x-admin-token') || req.query.token || req.body?.token;
-  return presented === config.adminToken;
-}
 
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (char) => ({
@@ -122,8 +116,7 @@ async function render(token, result) {
 
 router.get('/admin', async (req, res, next) => {
   try {
-    if (!allowed(req)) return res.status(403).send('forbidden');
-    res.type('html').send(await render(req.query.token || config.adminToken || '', null));
+    res.type('html').send(await render('', null));
   } catch (error) {
     next(error);
   }
@@ -132,7 +125,6 @@ router.get('/admin', async (req, res, next) => {
 
 router.post('/admin/try', express.urlencoded({ extended: false }), async (req, res, next) => {
   try {
-    if (!allowed(req)) return res.status(403).send('forbidden');
     const event = {
       messageId: `admin-${crypto.randomUUID()}`,
       from: normalizePhone(req.body.from),
@@ -144,7 +136,7 @@ router.post('/admin/try', express.urlencoded({ extended: false }), async (req, r
     };
     const result = await handleIncoming(event);
     await deliverResult(event, result);
-    res.type('html').send(await render(req.body.token || req.query.token || '', result));
+    res.type('html').send(await render('', result));
   } catch (error) {
     next(error);
   }
@@ -153,7 +145,6 @@ router.post('/admin/try', express.urlencoded({ extended: false }), async (req, r
 
 router.post('/simulate', async (req, res, next) => {
   try {
-    if (!allowed(req)) return res.status(403).json({ error: 'forbidden' });
     const from = normalizePhone(req.body.from);
     if (!from) return res.status(400).json({ error: 'from is required' });
     const event = {

@@ -66,6 +66,6 @@ npm run broker:add -- 972501234567 "דנה לוי" "משרד לוי"
 
 ## פריסה
 
-`Dockerfile` ו-`railway.toml` מריצים `prisma db push` ואז את השרת. ב-Railway מגדירים `DATABASE_URL` של PostgreSQL ו-`NODE_ENV=production`. בלי `ADMIN_TOKEN` לוח התפעול סגור.
+`Dockerfile` ו-`railway.toml` מריצים `prisma db push` ואז את השרת. ב-Railway מגדירים `DATABASE_URL` של PostgreSQL ו-`NODE_ENV=production`. ה-CRM ולוח התפעול נפתחים בקישור, בלי סיסמה.
 
 משתני הסביבה המלאים נמצאים ב-`.env.example`.
