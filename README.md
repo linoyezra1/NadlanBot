@@ -47,14 +47,12 @@ npm run demo
 
 המערכת לא משתמשת בסקרייפינג. צריך:
 
-1. אפליקציה ב-Meta Developers ומוצר WhatsApp. ה-Webhook הוא `https://<הדומיין>/webhook`, ואימות ה-GET משתמש ב-`WHATSAPP_VERIFY_TOKEN`.
-2. `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` ו-`WHATSAPP_DISPLAY_NUMBER` של המספר העסקי.
-3. `META_APP_SECRET` כדי לאמת את חתימת ה-Webhook. בפרודקשן בלי הסוד הקריאות נדחות.
-4. לפרסום: `META_PAGE_ID` ו-`META_PAGE_ACCESS_TOKEN` עם `pages_manage_posts`. לאינסטגרם גם `META_IG_USER_ID` ו-`instagram_content_publish`.
-5. קבוצות פייסבוק: רק קבוצה שבה העמוד מנהל והאפליקציה מותקנת. מוסיפים אותה עם `הוסף קבוצה`.
-6. טיקטוק: `TIKTOK_ACCESS_TOKEN` של Content Posting API, ורק אם יש סרטון בנכס. לפני אישור האפליקציה נשארים על `TIKTOK_PRIVACY_LEVEL=SELF_ONLY`.
+1. ב-Twilio, ב-WhatsApp Sender, ה-Webhook הוא `POST https://<הדומיין>/webhook`.
+2. `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` ו-`WHATSAPP_DISPLAY_NUMBER` של המספר השולח.
+3. `PUBLIC_BASE_URL` חייב להיות אותו דומיין ציבורי, כי חתימת Twilio נבדקת מולו. בפרודקשן בלי `TWILIO_AUTH_TOKEN` הקריאות נדחות.
+4. לפרסום בפייסבוק: `META_PAGE_ID` ו-`META_PAGE_ACCESS_TOKEN` עם `pages_manage_posts`. לאינסטגרם גם `META_IG_USER_ID` ו-`instagram_content_publish`.
 
-שיחת מתעניין נפתחת על ידו, ולכן יש חלון שירות של 24 שעות בלי תבנית. עדכון למתווך מחוץ לחלון דורש תבנית מאושרת עם משתנה גוף אחד: `WHATSAPP_BROKER_TEMPLATE_NAME`.
+שיחת מתעניין נפתחת על ידו, ולכן יש חלון שירות של 24 שעות בלי תבנית. עדכון למתווך מחוץ לחלון דורש תבנית מאושרת עם משתנה גוף אחד: `TWILIO_CONTENT_SID`.
 
 מדיה מקומית לא מתאימה לפרסום ברשת, כי מטא וטיקטוק צריכים כתובת `https` ציבורית. בפרודקשן מגדירים `STORAGE_PROVIDER=cloudinary` או `s3`, ו-`PUBLIC_BASE_URL`.
 

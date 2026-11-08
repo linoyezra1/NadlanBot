@@ -1,56 +1,74 @@
 import { normalizePhone } from '../domain/phone.js';
 
-function mediaBlock(message) {
-  const media = message[message.type] || {};
-  return {
-    kind: message.type,
-    id: media.id || null,
-    url: null,
-    mimeType: media.mime_type || null,
-    caption: media.caption || '',
-    filename: media.filename || null,
-  };
+const BUTTON_IDS = {
+  'שמירת הנכס': 'save',
+  'עריכה': 'edit',
+  'ביטול': 'cancel',
+  'פרסום עכשיו': 'publish_now',
+  'אחר כך': 'publish_later',
+  'אישור הנוסח': 'approve_copy',
+  'כל הערוצים': 'channels_all',
+  'בלי טיקטוק': 'channels_no_tiktok',
+};
+
+function mediaKind(contentType) {
+  const type = String(contentType || '').toLowerCase();
+  if (type.startsWith('video')) return 'video';
+  if (type.startsWith('audio')) return 'audio';
+  if (type.startsWith('application') || type.includes('pdf')) return 'document';
+  return 'image';
 }
 
-export function normalizeWaMessage(message, name = '') {
-  const event = {
-    messageId: message.id || null,
-    from: normalizePhone(message.from),
-    name: name || '',
-    type: message.type || 'text',
-    text: '',
-    buttonId: null,
-    media: null,
-  };
-
-  if (message.type === 'text') event.text = message.text?.body || '';
-  if (message.type === 'interactive') {
-    const reply = message.interactive?.button_reply || message.interactive?.list_reply;
-    event.text = reply?.title || '';
-    event.buttonId = reply?.id || null;
-    event.type = 'button';
-  }
-  if (message.type === 'button') {
-    event.text = message.button?.text || '';
-    event.buttonId = message.button?.payload || null;
-  }
-  if (['image', 'video', 'document', 'audio'].includes(message.type)) {
-    event.media = mediaBlock(message);
-    event.text = event.media.caption || '';
-  }
-  return event;
+function buttonIdFor(body) {
+  const payload = body.ButtonPayload || body.ListId || '';
+  if (payload) return String(payload);
+  return BUTTON_IDS[String(body.Body || body.ButtonText || body.ListTitle || '').trim()] || null;
 }
 
 export function parseWebhookBody(body) {
-  const events = [];
-  for (const entry of body?.entry || []) {
-    for (const change of entry.changes || []) {
-      const value = change.value || {};
-      const names = new Map((value.contacts || []).map((contact) => [contact.wa_id, contact.profile?.name || '']));
-      for (const message of value.messages || []) {
-        events.push(normalizeWaMessage(message, names.get(message.from) || ''));
-      }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return [];
+  if (body.MessageStatus && body.MessageStatus !== 'received') return [];
+  const from = normalizePhone(body.From || '');
+  if (!from) return [];
+
+  const text = String(body.Body || body.ButtonText || body.ListTitle || '').trim();
+  const numMedia = Number(body.NumMedia || 0);
+  const buttonId = buttonIdFor(body);
+  const messageId = body.MessageSid || body.SmsSid || null;
+  if (!text && numMedia === 0) return [];
+
+  if (numMedia > 0) {
+    const events = [];
+    for (let index = 0; index < numMedia; index += 1) {
+      const contentType = body[`MediaContentType${index}`] || '';
+      const kind = mediaKind(contentType);
+      events.push({
+        messageId: index === 0 ? messageId : `${messageId}:${index}`,
+        from,
+        name: body.ProfileName || '',
+        type: kind,
+        text: index === 0 ? text : '',
+        buttonId: null,
+        media: {
+          kind,
+          id: null,
+          url: body[`MediaUrl${index}`] || null,
+          mimeType: contentType || null,
+          caption: index === 0 ? text : '',
+          filename: null,
+        },
+      });
     }
+    return events;
   }
-  return events;
+
+  return [{
+    messageId,
+    from,
+    name: body.ProfileName || '',
+    type: buttonId ? 'button' : 'text',
+    text,
+    buttonId,
+    media: null,
+  }];
 }

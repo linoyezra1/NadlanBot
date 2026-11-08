@@ -1,6 +1,6 @@
 import { detectTags } from '../domain/tags.js';
 import { prisma } from '../db.js';
-import { downloadWhatsAppMedia } from './whatsapp.js';
+import { downloadWhatsAppMedia, isTwilioMediaUrl } from './whatsapp.js';
 import { storeBuffer } from './storage.js';
 
 function mediaTypeFor(kind) {
@@ -14,7 +14,22 @@ export async function ingestEventMedia(event) {
   if (!media || media.kind === 'audio') return null;
   const tags = detectTags(`${media.caption || ''} ${event.text || ''}`);
   const caption = media.caption || null;
-  if (media.url && !media.id) {
+  if (media.url && isTwilioMediaUrl(media.url)) {
+    const downloaded = await downloadWhatsAppMedia(media.url);
+    const stored = await storeBuffer({
+      buffer: downloaded.buffer,
+      mimeType: downloaded.mimeType,
+      filename: media.filename,
+    });
+    return {
+      mediaType: mediaTypeFor(media.kind),
+      cloudUrl: stored.url,
+      storageKey: stored.key,
+      tags,
+      caption,
+    };
+  }
+  if (media.url) {
     return {
       mediaType: mediaTypeFor(media.kind),
       cloudUrl: media.url,
@@ -23,20 +38,7 @@ export async function ingestEventMedia(event) {
       caption,
     };
   }
-  if (!media.id) return null;
-  const downloaded = await downloadWhatsAppMedia(media.id);
-  const stored = await storeBuffer({
-    buffer: downloaded.buffer,
-    mimeType: downloaded.mimeType,
-    filename: media.filename,
-  });
-  return {
-    mediaType: mediaTypeFor(media.kind),
-    cloudUrl: stored.url,
-    storageKey: stored.key,
-    tags,
-    caption,
-  };
+  return null;
 }
 
 export async function attachMedia(conversation, event) {

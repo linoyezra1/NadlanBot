@@ -11,12 +11,10 @@ export const config = {
   port: Number(process.env.PORT || 3000),
   nodeEnv: text('NODE_ENV', 'development'),
   publicBaseUrl: text('PUBLIC_BASE_URL', `http://localhost:${process.env.PORT || 3000}`).replace(/\/$/, ''),
-  verifyToken: text('WHATSAPP_VERIFY_TOKEN'),
-  whatsappToken: text('WHATSAPP_TOKEN'),
-  whatsappPhoneNumberId: text('WHATSAPP_PHONE_NUMBER_ID'),
-  whatsappBusinessAccountId: text('WHATSAPP_BUSINESS_ACCOUNT_ID'),
+  twilioAccountSid: text('TWILIO_ACCOUNT_SID'),
+  twilioAuthToken: text('TWILIO_AUTH_TOKEN'),
+  twilioContentSid: text('TWILIO_CONTENT_SID'),
   whatsappDisplayNumber: text('WHATSAPP_DISPLAY_NUMBER'),
-  metaAppSecret: text('META_APP_SECRET'),
   graphVersion: text('META_GRAPH_VERSION', 'v21.0'),
   openaiApiKey: text('OPENAI_API_KEY'),
   openaiModel: text('OPENAI_MODEL', 'gpt-4o-mini'),
@@ -48,7 +46,7 @@ export const config = {
 
 export function integrationStatus() {
   return {
-    whatsapp: Boolean(config.whatsappToken && config.whatsappPhoneNumberId),
+    whatsapp: Boolean(config.twilioAccountSid && config.twilioAuthToken && config.whatsappDisplayNumber),
     openai: Boolean(config.openaiApiKey),
     storage: config.storageProvider || 'local',
     metaPage: Boolean(config.metaPageId && config.metaPageAccessToken),
@@ -60,8 +58,8 @@ export function integrationStatus() {
 
 export function integrationWarnings() {
   const warnings = [];
-  if (!config.whatsappToken || !config.whatsappPhoneNumberId) {
-    warnings.push('WhatsApp Cloud API is not configured. Messages will be stored but not delivered.');
+  if (!config.twilioAccountSid || !config.twilioAuthToken || !config.whatsappDisplayNumber) {
+    warnings.push('Twilio WhatsApp is not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and WHATSAPP_DISPLAY_NUMBER. Messages will be stored but not delivered.');
   }
   if (!config.whatsappDisplayNumber) {
     warnings.push('WHATSAPP_DISPLAY_NUMBER is empty, so click-to-WhatsApp links cannot be built yet.');
@@ -72,8 +70,11 @@ export function integrationWarnings() {
   if (config.storageProvider === 'local') {
     warnings.push('Storage is local. Facebook, Instagram and TikTok can only fetch public https media URLs.');
   }
-  if (config.nodeEnv === 'production' && !config.metaAppSecret) {
-    warnings.push('META_APP_SECRET is empty. Webhook posts are rejected in production until it is set.');
+  if (config.nodeEnv === 'production' && !config.twilioAuthToken) {
+    warnings.push('TWILIO_AUTH_TOKEN is empty. Webhook posts are rejected in production until it is set.');
+  }
+  if (config.nodeEnv === 'production' && /localhost|127\.0\.0\.1/.test(config.publicBaseUrl)) {
+    warnings.push('PUBLIC_BASE_URL still points at localhost. Twilio signature checks need the public https URL.');
   }
   return warnings;
 }
