@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
 import { config } from '../config.js';
 import { ensureMarketingLink, fallbackMarketing } from '../domain/marketing.js';
+import { postWaMe } from '../domain/waLink.js';
+import { SYSTEM_PROMPT_POST_GENERATION } from './socialPublisher.js';
 import { highlightsFromTranscript } from '../domain/hotLead.js';
 import { logger } from '../logger.js';
 
@@ -24,34 +26,34 @@ function publicFields(fields) {
     amenities: fields.amenities,
     vacancyDate: fields.vacancyDate,
     featuresText: fields.featuresText,
+    listingType: fields.listingType,
   };
 }
 
-export async function generateMarketing(fields, waLink) {
-  const fallback = ensureMarketingLink(fallbackMarketing(fields, waLink), waLink);
+export async function generateMarketing(fields, waLink, broker) {
+  const link = waLink || postWaMe(fields?.code);
+  const fallback = ensureMarketingLink(fallbackMarketing(fields, link, broker), link);
   if (!hasOpenAI()) return fallback;
   try {
     const response = await client().chat.completions.create({
       model: config.openaiModel,
-      temperature: 0.6,
+      temperature: 0.4,
       messages: [
-        {
-          role: 'system',
-          content: [
-            'נסח פוסט שיווקי קצר בעברית לנדל"ן.',
-            'השתמש רק בעובדות שנמסרו. אל תמציא נתונים ואל תזכיר את בעל הנכס.',
-            'כלול את קישור הוואטסאפ בדיוק כפי שנמסר.',
-            'עד 700 תווים, בלי רשימת האשטגים ארוכה.',
-            'החזר רק את טקסט הפוסט.',
-          ].join(' '),
-        },
+        { role: 'system', content: SYSTEM_PROMPT_POST_GENERATION },
         {
           role: 'user',
-          content: `${JSON.stringify(publicFields(fields))}\n${waLink || ''}`,
+          content: JSON.stringify({
+            property: publicFields(fields),
+            broker: {
+              name: broker?.businessName || broker?.fullName || null,
+              phone: broker?.phoneNumber || null,
+            },
+            waLink: link,
+          }),
         },
       ],
     });
-    return ensureMarketingLink(response.choices[0]?.message?.content || fallback, waLink);
+    return ensureMarketingLink(response.choices[0]?.message?.content || fallback, link);
   } catch (error) {
     logger.warn('marketing generation failed', error.message);
     return fallback;
@@ -68,7 +70,8 @@ export async function extractWithModel(text) {
         role: 'system',
         content: [
           'חלץ שדות נכס מהודעה בעברית.',
-          'החזר JSON עם המפתחות: address, city, neighborhood, rooms, floor, sizeSqm, price, parking, elevator, balcony, mamad, vacancyDate, featuresText, ownerName, ownerPhone, privateNotes.',
+          'החזר JSON עם המפתחות: listingType, address, city, neighborhood, rooms, floor, sizeSqm, price, parking, elevator, balcony, mamad, vacancyDate, featuresText, ownerName, ownerPhone, privateNotes.',
+          'listingType הוא sale או rent רק אם נאמר במפורש למכירה או להשכרה.',
           'price הוא מספר בשקלים. rooms ו-sizeSqm מספרים. parking, elevator, balcony, mamad הם true או false רק אם נאמרו במפורש.',
           'שדה לא ידוע יהיה null. אל תנחש.',
         ].join(' '),

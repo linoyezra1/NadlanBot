@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mergeExtract, naiveExtract, nextField, parseAmenities, parsePrice, blankFields } from '../src/domain/fields.js';
 
-const GOLDEN = `כתובת: רחוב הרצל 10
+const GOLDEN = `למכירה
+כתובת: רחוב הרצל 10
 עיר: תל אביב
 שכונה: נווה צדק
 3.5 חדרים, קומה 2, 82 מ"ר
@@ -27,6 +28,7 @@ test('parses prices and amenities', () => {
 
 test('a single broker message fills the property card', () => {
   const fields = mergeExtract(blankFields(), naiveExtract(GOLDEN));
+  assert.equal(fields.listingType, 'sale');
   assert.equal(fields.address, 'רחוב הרצל 10');
   assert.equal(fields.city, 'תל אביב');
   assert.equal(fields.neighborhood, 'נווה צדק');

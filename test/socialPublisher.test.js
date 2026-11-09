@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import test from 'node:test';
 import { zernioApiRoot } from '../src/config.js';
+import { connectedPage } from '../src/domain/connectedPage.js';
 import { cloudinaryFolderName, signedCloudinaryParams } from '../src/services/storage.js';
 import { facebookSharerUrl, forwardCard, groupShareMessage } from '../src/domain/share.js';
 import { signaturesMatch } from '../src/routes/socialWebhook.js';
@@ -50,6 +51,18 @@ test('signs Cloudinary uploads into the nadlanbot folder', () => {
   assert.equal(fixed.signature, crypto.createHash('sha1')
     .update('folder=nadlanbot&public_id=2026/abc&timestamp=1700000000secret')
     .digest('hex'));
+});
+
+test('shows a finished connection screen', () => {
+  const html = connectedPage({
+    iconUrl: '/brand/icon.png',
+    whatsappUrl: 'https://wa.me/12762762210',
+    username: 'hagit',
+  });
+  assert.match(html, /החיבור הושלם/);
+  assert.match(html, /חזרה לוואטסאפ/);
+  assert.match(html, /\/brand\/icon\.png/);
+  assert.equal(html.includes('החיבור הסתיים'), false);
 });
 
 test('uses the Zernio host and keeps the v1 prefix', () => {

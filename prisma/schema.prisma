@@ -46,6 +46,7 @@ model Property {
   amenities     Json?
   vacancyDate   String?
   featuresText  String?
+  listingType   String?
   status        String   @default("draft")
   marketingText String?
   isPublished      Boolean @default(false)

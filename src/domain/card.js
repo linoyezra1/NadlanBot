@@ -32,6 +32,7 @@ export function toPublicCard(property) {
   const media = Array.isArray(property.media) ? property.media : [];
   return {
     code: property.code,
+    listingType: property.listingType || null,
     address: property.address || null,
     city: property.city || null,
     neighborhood: property.neighborhood || null,
@@ -101,7 +102,9 @@ export function formatDraftCard(fields, code = 'טיוטה') {
 
 export function formatPublicSummary(property) {
   const where = [property.neighborhood, property.city].filter(Boolean).join(', ');
+  const deal = property.listingType === 'rent' ? 'להשכרה' : property.listingType === 'sale' ? 'למכירה' : null;
   return [
+    deal,
     property.rooms != null ? `${property.rooms} חדרים` : null,
     where || null,
     property.price != null ? formatPrice(property.price) : null,

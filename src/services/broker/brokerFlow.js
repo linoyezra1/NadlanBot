@@ -23,7 +23,7 @@ import {
   parsePublishCommand,
 } from '../../domain/intents.js';
 import { buttons, text } from '../../domain/replies.js';
-import { clickToWhatsAppLink } from '../../domain/waLink.js';
+import { postWaMe } from '../../domain/waLink.js';
 import { prisma } from '../../db.js';
 import { readFlow, rememberInbound, saveFlow } from '../conversationStore.js';
 import { extractFromUtterance } from '../extract.js';
@@ -126,7 +126,7 @@ async function startOnboarding(broker) {
       'דירה חדשה. נמלא את תעודת הנכס שאלה אחרי שאלה, וכל תשובה נשמרת.',
       'אפשר לשלוח תמונות וסרטונים בכל שלב.',
       '',
-      questionFor('address', flow.fields),
+      questionFor(nextField(flow.fields, flow.skipped) || 'listingType', flow.fields),
     ].join('\n'))],
   };
 }
@@ -158,12 +158,13 @@ async function loadProperty(propertyId) {
 }
 
 async function beginMarketing(conversation, flow) {
-  const waLink = clickToWhatsAppLink(flow.code);
+  const waLink = postWaMe(flow.code);
   if (!waLink) {
     await saveFlow(conversation.id, { status: 'closed', flowStep: 'done', flow });
     return [text(`הנכס ${flow.code} שמור, אבל חסר TWILIO_WHATSAPP_NUMBER ולכן אי אפשר לבנות קישור wa.me. אחרי ההגדרה כתוב: פרסם ${flow.code}`)];
   }
-  const marketingText = await generateMarketing(flow.fields, waLink);
+  const broker = await prisma.broker.findUnique({ where: { id: conversation.brokerId } });
+  const marketingText = await generateMarketing({ ...flow.fields, code: flow.code }, waLink, broker);
   flow.marketingText = marketingText;
   await saveFlow(conversation.id, { flowStep: 'marketing', flow });
   return [
@@ -314,7 +315,7 @@ async function mediaStep(conversation, rawText) {
   }
   const flow = { ...freshFlow(), mode: 'guided' };
   await saveFlow(conversation.id, { flowStep: 'details', flow });
-  return [text(questionFor('address', flow.fields))];
+  return [text(questionFor('listingType', flow.fields))];
 }
 
 async function detailsStep(conversation, flow, rawText) {
@@ -487,6 +488,7 @@ async function startPublish(broker, code, inboxId) {
       amenities: property.amenities,
       vacancyDate: property.vacancyDate,
       featuresText: property.featuresText,
+      listingType: property.listingType,
     },
     propertyId: property.id,
     code: property.code,

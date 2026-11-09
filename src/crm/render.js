@@ -117,6 +117,7 @@ export function propertiesPage(token, properties, query) {
 export function propertyPage(token, property, notice = '') {
   const [statusLabel, tone] = propertyStatus(property.status);
   const bits = [
+    ['סוג', property.listingType === 'rent' ? 'להשכרה' : property.listingType === 'sale' ? 'למכירה' : null],
     ['חדרים', property.rooms],
     ['קומה', property.floor],
     ['שטח', property.sizeSqm != null ? `${property.sizeSqm} מ"ר` : null],
@@ -209,7 +210,7 @@ export function leadsPage(token, leads, filter) {
     <header class="page-head">
       <div>
         <h1>לקוחות</h1>
-        <p>פניות שנפתחו מול הבוט, והפרטים שהוא מסר.</p>
+        <p>פניות שנפתחו מול הבוט, עם כל השיחה.</p>
       </div>
     </header>
     ${filters(token, filter)}
@@ -227,10 +228,6 @@ function messageItem(message) {
 
 export function leadPage(token, lead) {
   const [label, tone] = leadStatus(lead.status);
-  const botMessages = lead.messages.filter((message) => message.sender === 'bot' && (message.text || message.mediaUrl));
-  const given = botMessages.length
-    ? `<ol class="thread">${botMessages.map(messageItem).join('')}</ol>`
-    : '<div class="empty">הבוט עדיין לא שמר מענה בשיחה הזו.</div>';
   const property = lead.property;
   const propertyBlock = property
     ? `<a class="card" href="${href(token, `/properties/${encodeURIComponent(property.code)}`)}">
@@ -253,7 +250,6 @@ export function leadPage(token, lead) {
     </header>
     <div class="split">
       <div>
-        <section class="block"><h2>הפרטים שהבוט מסר</h2>${given}</section>
         <section class="block"><h2>כל השיחה</h2><ol class="thread">${lead.messages.map(messageItem).join('') || '<li class="muted">אין הודעות</li>'}</ol></section>
       </div>
       <div>
@@ -355,6 +351,13 @@ export function propertyFormPage(token, broker, { errors = [], values = {} } = {
     </header>
     ${alert}
     <form class="block sheet" method="post" enctype="multipart/form-data" action="${href(token, `/office/${broker.id}/properties`)}">
+      <fieldset class="field">
+        <legend>למכירה או להשכרה *</legend>
+        <div class="yesno">
+          <label><input type="radio" name="listingType" value="sale" ${values.listingType === 'sale' ? 'checked' : ''} required> למכירה</label>
+          <label><input type="radio" name="listingType" value="rent" ${values.listingType === 'rent' ? 'checked' : ''}> להשכרה</label>
+        </div>
+      </fieldset>
       <div class="grid-2">
         ${textField('address', 'כתובת *', values.address, 'required')}
         ${textField('city', 'עיר *', values.city, 'required')}

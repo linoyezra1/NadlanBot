@@ -10,6 +10,7 @@ export const AMENITY_LABELS = {
 };
 
 export const FIELD_ORDER = [
+  'listingType',
   'address',
   'city',
   'neighborhood',
@@ -40,6 +41,7 @@ const SCALAR_KEYS = FIELD_ORDER.filter((key) => key !== 'amenities');
 
 export function blankFields() {
   return {
+    listingType: null,
     address: null,
     city: null,
     neighborhood: null,
@@ -54,6 +56,15 @@ export function blankFields() {
     ownerPhone: null,
     privateNotes: null,
   };
+}
+
+export function parseListingType(text) {
+  const value = String(text || '');
+  const rent = value.search(/השכרה/);
+  const sale = value.search(/מכירה/);
+  if (rent >= 0 && (sale < 0 || rent < sale)) return 'rent';
+  if (sale >= 0) return 'sale';
+  return null;
 }
 
 export function isSkip(text) {
@@ -141,6 +152,10 @@ function clipWords(value, count) {
 
 export function coerceField(key, value) {
   if (value == null || value === '') return null;
+  if (key === 'listingType') {
+    if (value === 'sale' || value === 'rent') return value;
+    return parseListingType(value);
+  }
   if (key === 'rooms') return parseRooms(value);
   if (key === 'sizeSqm') return parseSize(value);
   if (key === 'price') return parsePrice(value);
@@ -211,15 +226,20 @@ export function questionFor(key, fields) {
     return `עדיין חסר לי: ${missing.join(', ')}. יש או אין?`;
   }
   const questions = {
+    listingType: 'הדירה למכירה או להשכרה? כתוב "למכירה" או "להשכרה".',
     address: 'מה הכתובת המלאה? לדוגמה: רחוב הרצל 10.',
     city: 'באיזו עיר הנכס?',
     neighborhood: 'באיזו שכונה? אם אין, כתוב דלג.',
     rooms: 'כמה חדרים? אפשר גם 3.5.',
     floor: 'באיזו קומה? אם זו קומת קרקע, כתוב קרקע. אפשר לדלג.',
     sizeSqm: 'כמה מ"ר בנוי? אפשר לדלג.',
-    price: 'מה המחיר המבוקש? לדוגמה: 2,450,000 או 2.45 מיליון.',
+    price: fields?.listingType === 'rent'
+      ? 'מה דמי השכירות לחודש? לדוגמה: 6,500.'
+      : 'מה המחיר המבוקש? לדוגמה: 2,450,000 או 2.45 מיליון.',
     vacancyDate: 'מתי אפשר להיכנס, או מה תאריך הפינוי? אפשר לדלג.',
-    featuresText: 'מה היתרונות שכדאי להדגיש? למשל: משופצת, עורפית, נוף פתוח. אפשר לדלג.',
+    featuresText: fields?.listingType === 'rent'
+      ? 'מה כדאי להדגיש להשכרה? למשל: חדשה מהקבלן, מטבח משודרג, מחסן. אפשר לדלג.'
+      : 'מה כדאי להדגיש למכירה? למשל: נוף לים, בניין בוטיק, מתחת למחיר השוק. אפשר לדלג.',
     ownerName: 'שם בעל הנכס נשמר חסוי ולא נחשף ללקוחות. איך קוראים לו? אפשר לדלג.',
     ownerPhone: 'טלפון של בעל הנכס (חסוי אף הוא). אפשר לדלג.',
     privateNotes: 'הערות אישיות אליך בלבד, למשל מתי לא נוח להתקשר. אפשר לדלג.',
@@ -262,6 +282,8 @@ function labeled(text, pattern) {
 export function naiveExtract(text) {
   const source = String(text || '');
   const partial = {};
+  const listingType = parseListingType(source);
+  if (listingType) partial.listingType = listingType;
   const address = labeled(source, /(?:^|\n)\s*(?:כתובת|רחוב)\s*[:\-]\s*([^\n]+)/);
   if (address) partial.address = /^רחוב\b/.test(address) ? address : (/רחוב\s*[:\-]/m.test(source) ? `רחוב ${address}` : address);
   const inlineAddress = source.match(/(?:^|\n|,|\s)רחוב\s+([^\n,]{3,60})/);

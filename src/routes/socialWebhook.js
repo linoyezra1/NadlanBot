@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import express from 'express';
 import { config } from '../config.js';
+import { brandIconUrl, connectedPage } from '../domain/connectedPage.js';
 import { prisma } from '../db.js';
 import { text } from '../domain/replies.js';
 import { logger } from '../logger.js';
@@ -113,8 +114,14 @@ router.get('/connect/:token', (req, res) => {
   res.type('html').send(`<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><title>חיבור רשתות</title><body><h1>חברו את החשבונות</h1>${buttons}</body></html>`);
 });
 
-router.get('/callback', (_req, res) => {
-  res.type('html').send('<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><body><p>החיבור הסתיים. אפשר לחזור לוואטסאפ.</p></body></html>');
+router.get('/callback', (req, res) => {
+  const username = String(req.query.username || '').trim().slice(0, 80);
+  const number = String(config.whatsappDisplayNumber || '').replace(/\D/g, '');
+  res.type('html').send(connectedPage({
+    iconUrl: brandIconUrl(),
+    whatsappUrl: number ? `https://wa.me/${number}` : '',
+    username,
+  }));
 });
 
 router.get('/connected', (_req, res) => {

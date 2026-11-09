@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { isPublicHttpUrl } from '../domain/channels.js';
-import { clickToWhatsAppLink } from '../domain/waLink.js';
+import { clickToWhatsAppLink, postWaMe } from '../domain/waLink.js';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 
@@ -33,8 +33,21 @@ export function selectPublicMedia(media) {
     .map((item) => ({ url: item.cloudUrl, type: mediaType(item) }));
 }
 
+export const SYSTEM_PROMPT_POST_GENERATION = `
+אתה עוזר שיווקי בכיר למתווכי נדל"ן באזור המרכז/בת ים.
+תפקידך לייצר פוסט לפייסבוק ואינסטגרם מתוך פרטי הנכס.
+
+חוקי הסגנון:
+1. שורות קצרות וקולעות עם רווח בין שורה לשורה. בלי פסקאות ארוכות ובלי מילים מנופחות.
+2. כותרת ברורה: "להשכרה {חדרים} חדרים ב{פרויקט/עיר}" או "למכירה ב{עיר}".
+3. ציין במדויק: כתובת, קומה, מפרט (מרפסת, חניה, מחסן, ממ"ד), שדרוגים מיוחדים ומוצרי חשמל אם קיימים.
+4. בסוף: ציין מחיר ואת הביטוי "לרציניים בלבד" (להשכרה) או "למביני עניין / מתחת למחיר השוק" (למכירה).
+5. סיים עם פרטי התקשרות של המתווך וקישור wa.me המכיל את קוד הנכס.
+אל תמציא עובדות שלא נמסרו. אל תזכיר את בעל הנכס.
+`.trim();
+
 export function composeCaption(caption, code) {
-  const link = clickToWhatsAppLink(code);
+  const link = postWaMe(code) || clickToWhatsAppLink(code);
   const body = String(caption || '').trim();
   if (!link) return body;
   if (body.includes(link)) return body;

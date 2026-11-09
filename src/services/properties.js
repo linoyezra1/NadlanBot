@@ -18,6 +18,7 @@ export async function createPropertyFromDraft({ brokerId, fields }) {
       amenities: fields.amenities || {},
       vacancyDate: fields.vacancyDate,
       featuresText: fields.featuresText,
+      listingType: fields.listingType,
       status: 'active',
       owner: {
         create: {
@@ -74,6 +75,7 @@ const OFFICE_KEYS = [
   'sizeSqm',
   'price',
   'vacancyDate',
+  'listingType',
   'featuresText',
   'ownerName',
   'ownerPhone',
@@ -91,6 +93,7 @@ export function officeFields(input) {
   }
   fields.amenities = amenities;
   const errors = [];
+  if (!fields.listingType) errors.push('חסר למכירה או להשכרה.');
   if (!fields.address) errors.push('חסרה כתובת.');
   if (!fields.city) errors.push('חסרה עיר.');
   if (fields.rooms == null) errors.push('חסר מספר חדרים.');
