@@ -159,6 +159,37 @@ button, input { font: inherit; }
 .empty { padding: 28px; color: var(--muted); }
 .row-links { display: flex; gap: 8px; flex-wrap: wrap; }
 .row-links a { color: var(--green); }
+.primary, button.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green);
+  color: white;
+  text-decoration: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 16px;
+  cursor: pointer;
+}
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.alert { background: var(--hot-soft); color: var(--hot); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; }
+.alert p { margin: 0 0 4px; }
+.sheet { display: grid; gap: 14px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; margin: 0; border: 0; padding: 0; }
+.field span, .field legend { color: var(--muted); font-size: 14px; }
+.field input, .field textarea, .field select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: white;
+  font: inherit;
+}
+.field textarea { min-height: 90px; resize: vertical; }
+.field small { color: var(--muted); }
+.yesno { display: flex; gap: 14px; }
+.yesno label { display: flex; gap: 6px; align-items: center; }
 
 @media (max-width: 900px) {
   .shell { display: block; }
@@ -166,7 +197,7 @@ button, input { font: inherit; }
   .brand span, .side .ops { display: none; }
   .side nav { flex-direction: row; }
   .main { padding: 16px; }
-  .stats, .layout, .split, .person { grid-template-columns: 1fr; }
+  .stats, .layout, .split, .person, .grid-2 { grid-template-columns: 1fr; }
   .page-head { flex-direction: column; align-items: stretch; }
   .page-head h1 { font-size: 26px; }
 }

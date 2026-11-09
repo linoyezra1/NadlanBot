@@ -68,7 +68,7 @@ function page(token, title, active, body) {
 export function dashboardPage(token, data) {
   const recent = data.properties.length
     ? `<div class="cards">${data.properties.map((property) => propertyCard(property, token)).join('')}</div>`
-    : '<div class="empty">עדיין אין נכסים. ברגע שהמתווך שולח לבוט "דירה חדשה", הנכס מופיע כאן.</div>';
+    : '<div class="empty">עדיין אין נכסים. באזור האישי אפשר לפתוח דירה חדשה ולמלא את תעודת הנכס.</div>';
   const hot = data.hotLeads.length
     ? `<div class="people">${data.hotLeads.map((lead) => personRow(lead, token)).join('')}</div>`
     : '<div class="empty">אין עדיין ליד שביקש סיור או שיחה.</div>';
@@ -76,8 +76,9 @@ export function dashboardPage(token, data) {
     <header class="page-head">
       <div>
         <h1>סקירה</h1>
-        <p>הנכסים שהבוט קלט, והלקוחות שפנו מהוואטסאפ.</p>
+        <p>הנכסים שנקלטו, והלקוחות שפנו מהוואטסאפ.</p>
       </div>
+      <a class="primary" href="${href(token, '/office')}">אזור אישי</a>
     </header>
     <section class="stats">
       <article class="stat"><span>נכסים</span><b>${data.propertyCount}</b></article>
@@ -94,23 +95,26 @@ export function dashboardPage(token, data) {
 export function propertiesPage(token, properties, query) {
   const cards = properties.length
     ? `<div class="cards">${properties.map((property) => propertyCard(property, token)).join('')}</div>`
-    : `<div class="empty">${query ? 'אין נכס שמתאים לחיפוש.' : 'עדיין אין נכסים. המתווך שולח לבוט "דירה חדשה" והכרטיס נשמר כאן.'}</div>`;
+    : `<div class="empty">${query ? 'אין נכס שמתאים לחיפוש.' : 'עדיין אין נכסים. באזור האישי אפשר לפתוח דירה חדשה.'}</div>`;
   return page(token, 'נכסים', 'properties', `
     <header class="page-head">
       <div>
         <h1>נכסים</h1>
-        <p>${properties.length} נכסים שהבוט שמר.</p>
+        <p>${properties.length} נכסים שמורים.</p>
       </div>
-      <form class="search" method="get" action="/properties">
-        ${token ? `<input type="hidden" name="token" value="${escapeHtml(token)}">` : ''}
-        <input name="q" value="${escapeHtml(query)}" placeholder="עיר, כתובת או APT-101">
-        <button type="submit">חיפוש</button>
-      </form>
+      <div class="actions">
+        <a class="primary" href="${href(token, '/office')}">דירה חדשה</a>
+        <form class="search" method="get" action="/properties">
+          ${token ? `<input type="hidden" name="token" value="${escapeHtml(token)}">` : ''}
+          <input name="q" value="${escapeHtml(query)}" placeholder="עיר, כתובת או APT-101">
+          <button type="submit">חיפוש</button>
+        </form>
+      </div>
     </header>
     ${cards}`);
 }
 
-export function propertyPage(token, property) {
+export function propertyPage(token, property, notice = '') {
   const [statusLabel, tone] = propertyStatus(property.status);
   const bits = [
     ['חדרים', property.rooms],
@@ -128,6 +132,12 @@ export function propertyPage(token, property) {
       return `<figure><img src="${escapeHtml(item.cloudUrl)}" alt="${escapeHtml(item.caption || tags)}" onerror="this.classList.add('broken')"><figcaption>${escapeHtml(item.caption || tags || item.mediaType)}</figcaption></figure>`;
     }).join('')}</div>`
     : '<div class="empty">לנכס הזה עדיין אין מדיה.</div>';
+  const upload = property.broker
+    ? `<form class="sheet" method="post" enctype="multipart/form-data" action="${href(token, `/office/${property.broker.id}/properties/${encodeURIComponent(property.code)}/media`)}">
+        <label class="field"><span>הוספת תמונות וסרטונים</span><input type="file" name="media" accept="image/*,video/*" multiple></label>
+        <button class="primary" type="submit">העלאה</button>
+      </form>`
+    : '';
   const leads = property.conversations.length
     ? `<div class="people">${property.conversations.map((lead) => personRow({ ...lead, property, messages: [] }, token)).join('')}</div>`
     : '<div class="empty">אף לקוח עדיין לא פנה על הנכס הזה.</div>';
@@ -144,7 +154,7 @@ export function propertyPage(token, property) {
     </header>
     <div class="split">
       <div>
-        <section class="block"><h2>תמונות וסרטונים</h2>${gallery}</section>
+        <section class="block"><h2>תמונות וסרטונים</h2>${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}${gallery}${upload}</section>
         <section class="block"><h2>לקוחות שפנו על הנכס</h2>${leads}</section>
       </div>
       <div>
@@ -251,6 +261,106 @@ export function leadPage(token, lead) {
         <section class="block"><h2>הנכס בשיחה</h2>${propertyBlock}</section>
       </div>
     </div>`);
+}
+
+const NETWORKS = {
+  facebook: 'פייסבוק',
+  instagram: 'אינסטגרם',
+  tiktok: 'טיקטוק',
+};
+
+function networkLine(broker) {
+  const names = (broker.connectedNetworks || []).map((item) => NETWORKS[item] || item);
+  if (broker.socialConnected) return names.length ? `מחובר: ${names.join(', ')}` : 'החשבונות מחוברים.';
+  return 'החשבונות עדיין לא מחוברים.';
+}
+
+function textField(name, label, value, extra = '') {
+  return `<label class="field"><span>${label}</span><input name="${name}" value="${escapeHtml(value ?? '')}" ${extra}></label>`;
+}
+
+function areaField(name, label, value) {
+  return `<label class="field"><span>${label}</span><textarea name="${name}">${escapeHtml(value ?? '')}</textarea></label>`;
+}
+
+function yesNo(name, label, value) {
+  return `<fieldset class="field"><legend>${label}</legend><div class="yesno">
+    <label><input type="radio" name="${name}" value="yes" ${value === 'yes' ? 'checked' : ''}> יש</label>
+    <label><input type="radio" name="${name}" value="no" ${value === 'no' ? 'checked' : ''}> אין</label>
+  </div></fieldset>`;
+}
+
+export function brokersPage(token, brokers) {
+  const cards = brokers.length
+    ? `<div class="people">${brokers.map((broker) => `<a class="card person" href="${href(token, `/office/${broker.id}`)}">
+        <div><strong>${escapeHtml(broker.fullName)}</strong><span class="muted">${escapeHtml(broker.businessName || '')}</span></div>
+        <div class="muted">${escapeHtml(formatPhone(broker.phoneNumber))}</div>
+        <div>${broker._count?.properties || 0} נכסים</div>
+      </a>`).join('')}</div>`
+    : '<div class="empty">אין עדיין מתווך רשום במערכת.</div>';
+  return page(token, 'אזור אישי', 'office', `
+    <header class="page-head"><div><h1>אזור אישי</h1><p>בחרו מתווך כדי לפתוח דירה, להעלות מדיה ולחבר חשבונות.</p></div></header>
+    ${cards}`);
+}
+
+export function officePage(token, broker, notice = '') {
+  const cards = broker.properties.length
+    ? `<div class="cards">${broker.properties.map((property) => propertyCard(property, token)).join('')}</div>`
+    : '<div class="empty">עדיין אין נכסים. לחצו דירה חדשה ומלאו את תעודת הנכס.</div>';
+  return page(token, broker.fullName, 'office', `
+    <header class="page-head">
+      <div>
+        <h1>${escapeHtml(broker.fullName)}</h1>
+        <p>${escapeHtml(broker.businessName || 'אזור אישי')} · ${escapeHtml(networkLine(broker))}</p>
+      </div>
+      <div class="actions">
+        <a class="primary" href="${href(token, `/office/${broker.id}/properties/new`)}">דירה חדשה</a>
+        <a class="primary" href="${href(token, `/office/${broker.id}/connect`)}">חיבור חשבונות</a>
+      </div>
+    </header>
+    ${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}
+    <section class="panel"><h2>הנכסים שלי</h2>${cards}</section>`);
+}
+
+export function propertyFormPage(token, broker, { errors = [], values = {} } = {}) {
+  const alert = errors.length ? `<div class="alert">${errors.map((item) => `<p>${escapeHtml(item)}</p>`).join('')}</div>` : '';
+  return page(token, 'דירה חדשה', 'office', `
+    <header class="page-head">
+      <div>
+        <h1>דירה חדשה</h1>
+        <p>תעודת הנכס של ${escapeHtml(broker.fullName)}. השדות עם כוכבית נדרשים.</p>
+      </div>
+    </header>
+    ${alert}
+    <form class="block sheet" method="post" enctype="multipart/form-data" action="${href(token, `/office/${broker.id}/properties`)}">
+      <div class="grid-2">
+        ${textField('address', 'כתובת *', values.address, 'required')}
+        ${textField('city', 'עיר *', values.city, 'required')}
+        ${textField('neighborhood', 'שכונה', values.neighborhood)}
+        ${textField('rooms', 'חדרים *', values.rooms, 'required inputmode="decimal"')}
+        ${textField('floor', 'קומה', values.floor)}
+        ${textField('sizeSqm', 'מ"ר', values.sizeSqm, 'inputmode="decimal"')}
+        ${textField('price', 'מחיר *', values.price, 'required inputmode="numeric"')}
+        ${textField('vacancyDate', 'תאריך פינוי', values.vacancyDate)}
+      </div>
+      <div class="grid-2">
+        ${yesNo('parking', 'חניה *', values.parking)}
+        ${yesNo('elevator', 'מעלית *', values.elevator)}
+        ${yesNo('balcony', 'מרפסת *', values.balcony)}
+        ${yesNo('mamad', 'ממ"ד *', values.mamad)}
+      </div>
+      ${areaField('featuresText', 'יתרונות לפרסום', values.featuresText)}
+      <section class="private">
+        <h2>בעלים, חסוי</h2>
+        <div class="grid-2">
+          ${textField('ownerName', 'שם בעל הנכס', values.ownerName)}
+          ${textField('ownerPhone', 'טלפון בעל הנכס', values.ownerPhone)}
+        </div>
+        ${areaField('privateNotes', 'הערות אישיות', values.privateNotes)}
+      </section>
+      <label class="field"><span>תמונות וסרטונים</span><input type="file" name="media" accept="image/*,video/*" multiple><small>עד 20 קבצים.</small></label>
+      <button class="primary" type="submit">שמירת הנכס</button>
+    </form>`);
 }
 
 export function missingPage(token, active, title, text) {

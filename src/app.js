@@ -6,6 +6,7 @@ import { prisma } from './db.js';
 import { uploadsDir } from './services/storage.js';
 import adminRouter from './routes/admin.js';
 import crmRouter from './routes/crm.js';
+import socialWebhookRouter from './routes/socialWebhook.js';
 import webhookRouter from './routes/webhook.js';
 
 export function createApp() {
@@ -13,6 +14,8 @@ export function createApp() {
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
   app.use('/webhook', webhookRouter);
+  app.use('/social-webhook', socialWebhookRouter);
+  app.use('/social', socialWebhookRouter);
   app.use(express.json({ limit: '1mb' }));
   app.use('/media', express.static(uploadsDir(), { index: false, fallthrough: false }));
   app.use(express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), '../public')));

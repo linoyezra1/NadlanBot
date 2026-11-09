@@ -13,7 +13,11 @@ model Broker {
   phoneNumber  String   @unique
   fullName     String
   businessName String?
+  email        String?  @unique
   status       String   @default("active")
+  socialProfileId   String?  @unique
+  socialConnected   Boolean  @default(false)
+  connectedNetworks String[] @default([])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -44,6 +48,11 @@ model Property {
   featuresText  String?
   status        String   @default("draft")
   marketingText String?
+  isPublished      Boolean @default(false)
+  publishedPostIds Json?
+  facebookPostUrl  String?
+  instagramPostUrl String?
+  tiktokPostUrl    String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

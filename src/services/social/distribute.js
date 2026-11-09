@@ -1,6 +1,9 @@
 import { planPosts } from '../../domain/plan.js';
+import { forwardCard, groupShareMessage } from '../../domain/share.js';
 import { clickToWhatsAppLink, shortClickToWhatsAppLink } from '../../domain/waLink.js';
+import { config } from '../../config.js';
 import { prisma } from '../../db.js';
+import { createConnectUrl, publishPropertyPost } from '../socialPublisher.js';
 import { resolveAccounts } from './credentials.js';
 import { publishFacebookGroup, publishFacebookPage, publishInstagram } from './meta.js';
 import { publishTikTokVideo, tiktokCaption } from './tiktok.js';
@@ -67,7 +70,85 @@ async function execute(item, accounts, caption, propertyCode) {
   throw new Error('ערוץ לא נתמך');
 }
 
+function gatewayMessages(results, property) {
+  const facebook = results.find((item) => item.platform === 'facebook' && item.postUrl);
+  const share = facebook ? groupShareMessage(facebook.postUrl) : null;
+  const published = results.some((item) => item.status === 'published' || item.status === 'processing');
+  if (!share && !published) return null;
+  const messages = [];
+  if (share) messages.push(share);
+  else messages.push('הפרסום עלה לחשבונות שחוברו.');
+  messages.push(forwardCard(property));
+  const also = [];
+  if (results.some((item) => item.platform === 'instagram' && item.status === 'published')) also.push('אינסטגרם');
+  if (results.some((item) => item.platform === 'tiktok' && (item.status === 'published' || item.status === 'processing'))) also.push('טיקטוק');
+  if (also.length) messages.push(`גם ${also.join(' ו')} עלו מהחשבון שלך.`);
+  const failed = results.filter((item) => item.status === 'failed' || item.status === 'skipped');
+  if (failed.length) {
+    messages.push(failed.map((item) => `${label(item)}: ${item.error || 'לא פורסם'}`).join('\n'));
+  }
+  return messages;
+}
+
+async function recordPublications(propertyId, results, waLink, caption) {
+  for (const result of results) {
+    await prisma.publication.create({
+      data: {
+        propertyId,
+        platform: result.platform,
+        targetId: result.targetId || null,
+        targetName: result.targetName || null,
+        postId: result.postId || null,
+        postUrl: result.postUrl || null,
+        waLink,
+        caption,
+        status: result.status,
+        error: result.error || null,
+      },
+    });
+  }
+}
+
+async function distributeThroughGateway({ broker, property, channels, groups, caption }) {
+  const waLink = clickToWhatsAppLink(property.code);
+  let results = [];
+  try {
+    const published = await publishPropertyPost({
+      brokerId: broker.id,
+      propertyId: property.id,
+      channels,
+      caption,
+    });
+    results = published.results;
+  } catch (error) {
+    let detail = error.message;
+    if (error.code === 'NOT_CONNECTED' || error.code === 'NO_ACCOUNTS') {
+      try {
+        const connectUrl = await createConnectUrl(broker.id);
+        detail = `${detail}\nלחץ כאן כדי לחבר את פייסבוק, אינסטגרם וטיקטוק: ${connectUrl}`;
+      } catch (connectError) {
+        detail = `${detail}\n${connectError.message}`;
+      }
+    }
+    results = [{ platform: 'social', status: 'failed', error: detail }];
+  }
+  await recordPublications(property.id, results, waLink, caption);
+  return {
+    waLink,
+    results,
+    summary: summarizeResults(results, waLink),
+    messages: gatewayMessages(results, property),
+  };
+}
+
 export async function distribute({ broker, property, channels, groups, caption }) {
+  if (config.socialGatewayApiKey) {
+    return distributeThroughGateway({ broker, property, channels, groups, caption });
+  }
+  return distributeDirect({ broker, property, channels, groups, caption });
+}
+
+async function distributeDirect({ broker, property, channels, groups, caption }) {
   const waLink = clickToWhatsAppLink(property.code);
   const accounts = await resolveAccounts(broker.id);
   const posts = planPosts({
@@ -94,22 +175,7 @@ export async function distribute({ broker, property, channels, groups, caption }
     }
   }
 
-  for (const result of results) {
-    await prisma.publication.create({
-      data: {
-        propertyId: property.id,
-        platform: result.platform,
-        targetId: result.targetId || null,
-        targetName: result.targetName || null,
-        postId: result.postId || null,
-        postUrl: result.postUrl || null,
-        waLink,
-        caption,
-        status: result.status,
-        error: result.error || null,
-      },
-    });
-  }
+  await recordPublications(property.id, results, waLink, caption);
   await prisma.property.update({
     where: { id: property.id },
     data: { marketingText: caption },

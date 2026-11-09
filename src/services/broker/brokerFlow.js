@@ -1,3 +1,4 @@
+import { config } from '../../config.js';
 import { formatDraftCard, formatPrice } from '../../domain/card.js';
 import { parseChannels, parseGroupSelection } from '../../domain/channels.js';
 import {
@@ -14,6 +15,7 @@ import {
   isExactCancel,
   isExactConfirm,
   isGuidedRequest,
+  isConnectSocialIntent,
   isListGroupsIntent,
   isListIntent,
   isNewPropertyIntent,
@@ -29,6 +31,7 @@ import { attachMedia, countConversationMedia } from '../media.js';
 import { generateMarketing } from '../openai.js';
 import { attachDraftMedia, createPropertyFromDraft, findBrokerProperty, listBrokerProperties } from '../properties.js';
 import { distribute } from '../social/distribute.js';
+import { createConnectUrl, gatewayConfigured } from '../socialPublisher.js';
 
 function freshFlow() {
   return {
@@ -66,19 +69,6 @@ function findOnboarding(brokerId) {
   });
 }
 
-function helpText(broker) {
-  return [
-    `היי ${broker.fullName}, כאן העוזר של המשרד.`,
-    'אפשר לכתוב:',
-    'דירה חדשה — קליטת נכס',
-    'הנכסים שלי',
-    'פרסם APT-104',
-    'הוסף קבוצה <מזהה> <שם>',
-    'הקבוצות שלי',
-    'ביטול — לעצור תהליך פתוח',
-  ].join('\n');
-}
-
 async function listText(broker) {
   const properties = await listBrokerProperties(broker.id);
   if (!properties.length) return 'עדיין אין נכסים שמורים. אפשר להתחיל עם "דירה חדשה".';
@@ -99,6 +89,16 @@ async function addGroup(broker, parsed) {
   return `הקבוצה "${parsed.name}" נשמרה. פרסום אוטומטי יעבוד רק אם העמוד מנהל בקבוצה והאפליקציה מותקנת בה.`;
 }
 
+async function connectText(broker) {
+  if (!gatewayConfigured()) return 'שער הסושיאל עדיין לא מוגדר בשרת.';
+  try {
+    const connectUrl = await createConnectUrl(broker.id);
+    return `לחץ כאן כדי לחבר את פייסבוק, אינסטגרם וטיקטוק: ${connectUrl}`;
+  } catch (error) {
+    return `לא הצלחתי להכין קישור חיבור: ${error.message}`;
+  }
+}
+
 async function groupsText(broker) {
   const groups = await prisma.facebookGroup.findMany({
     where: { brokerId: broker.id },
@@ -109,19 +109,25 @@ async function groupsText(broker) {
 }
 
 async function startOnboarding(broker) {
+  const flow = { ...freshFlow(), mode: 'guided' };
   const conversation = await prisma.conversation.create({
     data: {
       role: 'broker',
       brokerId: broker.id,
       brokerPhone: broker.phoneNumber,
       status: 'onboarding',
-      flowStep: 'media',
-      flowData: freshFlow(),
+      flowStep: 'details',
+      flowData: flow,
     },
   });
   return {
     conversation,
-    replies: [text('יאללה, נכס חדש. שלח תמונות וסרטונים. כשתסיים כתוב "סיימתי". אם אין מדיה כרגע, כתוב "בלי מדיה".')],
+    replies: [text([
+      'דירה חדשה. נמלא את תעודת הנכס שאלה אחרי שאלה, וכל תשובה נשמרת.',
+      'אפשר לשלוח תמונות וסרטונים בכל שלב.',
+      '',
+      questionFor('address', flow.fields),
+    ].join('\n'))],
   };
 }
 
@@ -190,7 +196,8 @@ async function finishPublish(broker, conversation, flow, channels, groups) {
     caption: flow.marketingText,
   });
   await saveFlow(conversation.id, { status: 'closed', flowStep: 'done', flow, propertyId: property.id });
-  return [text(outcome.summary)];
+  const messages = outcome.messages?.length ? outcome.messages : [outcome.summary];
+  return messages.filter(Boolean).map((body) => text(body));
 }
 
 async function afterChannels(broker, conversation, flow, channels) {
@@ -198,7 +205,7 @@ async function afterChannels(broker, conversation, flow, channels) {
   if (!channels.length) {
     return [text('לא זיהיתי ערוץ. כתוב "הכל", "בלי טיקטוק", או את השמות: פייסבוק, אינסטגרם, טיקטוק.')];
   }
-  const groups = channels.includes('facebook')
+  const groups = !config.socialGatewayApiKey && channels.includes('facebook')
     ? await prisma.facebookGroup.findMany({ where: { brokerId: broker.id }, orderBy: { name: 'asc' } })
     : [];
   if (groups.length) {
@@ -209,7 +216,7 @@ async function afterChannels(broker, conversation, flow, channels) {
   return finishPublish(broker, conversation, flow, channels, []);
 }
 
-export async function handleBroker(broker, event) {
+async function handleBrokerTurn(broker, event) {
   if (broker.status !== 'active') {
     return { replies: [text('המספר הזה רשום, אבל החשבון אינו פעיל.')], conversationId: null };
   }
@@ -247,10 +254,14 @@ export async function handleBroker(broker, event) {
         : `לא הצלחתי לשמור את הקובץ: ${error.message}`;
       return { replies: [text(message)], conversationId: onboarding.id };
     }
-    if (onboarding.flowStep === 'media') {
-      const count = await countConversationMedia(onboarding.id);
+    const count = await countConversationMedia(onboarding.id);
+    if (onboarding.flowStep === 'media' || !rawText) {
+      const flow = readFlow(onboarding);
+      const pending = nextField(flow.fields, flow.skipped);
+      const follow = pending ? `\n${questionFor(pending, flow.fields)}` : '';
+      const hint = onboarding.flowStep === 'media' ? ' אפשר לשלוח עוד, או לכתוב "סיימתי".' : follow;
       return {
-        replies: [text(`קיבלתי את הקובץ (${count}). אפשר לשלוח עוד, או לכתוב "סיימתי".`)],
+        replies: [text(`קיבלתי את הקובץ (${count}).${hint}`)],
         conversationId: onboarding.id,
       };
     }
@@ -266,6 +277,19 @@ export async function handleBroker(broker, event) {
   const flow = readFlow(onboarding);
   const replies = await step(broker, onboarding, flow, rawText, buttonId);
   return { replies, conversationId: onboarding.id };
+}
+
+export async function handleBroker(broker, event) {
+  const prior = await prisma.message.count({
+    where: { conversation: { brokerId: broker.id, role: 'broker' } },
+  });
+  const result = await handleBrokerTurn(broker, event);
+  const rawText = (event.text || '').trim();
+  const firstContact = prior === 0 && broker.status === 'active' && !broker.socialConnected;
+  if (firstContact && !isConnectSocialIntent(rawText) && result?.replies) {
+    result.replies = [...result.replies, text(await connectText(broker))];
+  }
+  return result;
 }
 
 async function step(broker, conversation, flow, rawText, buttonId) {
@@ -288,11 +312,18 @@ async function mediaStep(conversation, rawText) {
   if (count === 0 && rawText !== 'בלי מדיה') {
     return [text('עדיין לא קיבלתי מדיה. שלח לפחות תמונה אחת, או כתוב "בלי מדיה".')];
   }
-  await saveFlow(conversation.id, { flowStep: 'details', flow: freshFlow() });
-  return [text(DETAILS_INTRO)];
+  const flow = { ...freshFlow(), mode: 'guided' };
+  await saveFlow(conversation.id, { flowStep: 'details', flow });
+  return [text(questionFor('address', flow.fields))];
 }
 
 async function detailsStep(conversation, flow, rawText) {
+  if (isDoneMedia(rawText)) {
+    const count = await countConversationMedia(conversation.id);
+    const pending = nextField(flow.fields, flow.skipped);
+    const follow = pending ? questionFor(pending, flow.fields) : 'אפשר להמשיך.';
+    return [text(`הקבצים שמורים (${count}). ${follow}`)];
+  }
   if (flow.mode !== 'guided') {
     if (isGuidedRequest(rawText)) {
       flow.mode = 'guided';
@@ -308,6 +339,12 @@ async function detailsStep(conversation, flow, rawText) {
   }
   const key = nextField(flow.fields, flow.skipped);
   if (!key) return continueDetails(conversation, flow);
+  if (!rawText) return [text(questionFor(key, flow.fields))];
+  const dumped = await extractFromUtterance(rawText);
+  if (extractedCount(dumped) >= 2) {
+    flow.fields = mergeExtract(flow.fields, dumped);
+    return continueDetails(conversation, flow);
+  }
   const assigned = assignAnswer(flow.fields, key, rawText);
   if (assigned.error) return [text(assigned.error)];
   if (assigned.skip) flow.skipped = [...flow.skipped, key];
@@ -405,8 +442,27 @@ async function handleIdle(broker, event) {
   const group = parseAddGroup(rawText);
   if (group) return { replies: [text(await addGroup(broker, group))], conversationId: inbox.id };
   if (isListGroupsIntent(rawText)) return { replies: [text(await groupsText(broker))], conversationId: inbox.id };
-  if (event.media) return { replies: [text('כדי לצרף מדיה לנכס, קודם כתוב "דירה חדשה".')], conversationId: inbox.id };
-  return { replies: [text(helpText(broker))], conversationId: inbox.id };
+  if (isConnectSocialIntent(rawText)) return { replies: [text(await connectText(broker))], conversationId: inbox.id };
+  if (event.media?.kind === 'audio') {
+    return { replies: [text('הודעות קוליות עדיין לא נקלחות. כדי להתחיל כתוב דירה חדשה.')], conversationId: inbox.id };
+  }
+  if (event.media) {
+    const started = await startOnboarding(broker);
+    try {
+      await attachMedia(started.conversation, event);
+    } catch (error) {
+      return { replies: [text(`לא הצלחתי לשמור את הקובץ: ${error.message}`)], conversationId: started.conversation.id };
+    }
+    const count = await countConversationMedia(started.conversation.id);
+    return {
+      replies: [text(`קיבלתי את הקובץ (${count}).\n${started.replies[0].text}`)],
+      conversationId: started.conversation.id,
+    };
+  }
+  return {
+    replies: [text('כדי לקלוט דירה כתוב דירה חדשה. אחרי שהנכס נשמר אפשר לפרסם: פרסם APT-104.')],
+    conversationId: inbox.id,
+  };
 }
 
 async function startPublish(broker, code, inboxId) {

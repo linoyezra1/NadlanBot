@@ -16,6 +16,7 @@ export function layout({ title, active, token, body }) {
     <div class="brand"><strong>נדל"ן</strong><span>מה שהבוט קלט</span></div>
     <nav>
       ${link('/', 'סקירה', 'home')}
+      ${link('/office', 'אזור אישי', 'office')}
       ${link('/properties', 'נכסים', 'properties')}
       ${link('/leads', 'לקוחות', 'leads')}
     </nav>

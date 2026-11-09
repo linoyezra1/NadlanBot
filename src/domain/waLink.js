@@ -15,3 +15,9 @@ export function clickToWhatsAppLink(code) {
 export function shortClickToWhatsAppLink(code) {
   return buildWaLink(config.whatsappDisplayNumber, code, code);
 }
+
+export function forwardWaMe(code) {
+  const number = normalizePhone(config.whatsappDisplayNumber);
+  if (!number || !code) return null;
+  return `wa.me/${number}?text=${encodeURIComponent(code)}`;
+}

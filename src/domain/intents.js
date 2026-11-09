@@ -36,6 +36,10 @@ export function isListGroupsIntent(text) {
   return /הקבוצות שלי|רשימת קבוצות/.test(String(text || ''));
 }
 
+export function isConnectSocialIntent(text) {
+  return /חבר(?:ת)? (?:את )?(?:ה)?(?:חשבונות|רשתות)|חיבור (?:סושיאל|רשתות)/.test(String(text || ''));
+}
+
 export function parseAddGroup(text) {
   const match = String(text || '').match(/הוסף קבוצה\s+(\d{5,20})\s+(.{2,80})$/);
   if (!match) return null;

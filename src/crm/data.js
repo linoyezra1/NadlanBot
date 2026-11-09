@@ -81,6 +81,28 @@ export function listLeads(filter) {
   });
 }
 
+export function listBrokers() {
+  return prisma.broker.findMany({
+    orderBy: { fullName: 'asc' },
+    include: { _count: { select: { properties: true } } },
+  });
+}
+
+export function getBroker(id) {
+  return prisma.broker.findUnique({
+    where: { id },
+    include: {
+      properties: {
+        orderBy: { createdAt: 'desc' },
+        include: {
+          media: { orderBy: { createdAt: 'asc' }, take: 1 },
+          conversations: { where: { role: 'lead' }, select: { id: true, status: true } },
+        },
+      },
+    },
+  });
+}
+
 export function getLead(id) {
   return prisma.conversation.findFirst({
     where: { id, role: 'lead' },

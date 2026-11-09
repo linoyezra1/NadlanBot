@@ -7,6 +7,13 @@ function text(name, fallback = '') {
   return value == null ? fallback : String(value).trim();
 }
 
+export function zernioApiRoot(value) {
+  const base = String(value || 'https://api.zernio.com').trim().replace(/\/$/, '');
+  if (/\/v1$/i.test(base)) return base;
+  if (/\/api$/i.test(base)) return `${base}/v1`;
+  return `${base}/v1`;
+}
+
 export const config = {
   port: Number(process.env.PORT || 3000),
   nodeEnv: text('NODE_ENV', 'development'),
@@ -35,6 +42,9 @@ export const config = {
   metaIgUserId: text('META_IG_USER_ID'),
   tiktokAccessToken: text('TIKTOK_ACCESS_TOKEN'),
   tiktokPrivacyLevel: text('TIKTOK_PRIVACY_LEVEL', 'SELF_ONLY'),
+  socialGatewayApiKey: text('ZERNIO_API_KEY') || text('SOCIAL_GATEWAY_API_KEY'),
+  socialGatewayBaseUrl: zernioApiRoot(text('ZERNIO_BASE_URL') || text('SOCIAL_GATEWAY_BASE_URL', 'https://api.zernio.com')),
+  socialGatewayWebhookSecret: text('SOCIAL_GATEWAY_WEBHOOK_SECRET'),
   brokerTemplateName: text('WHATSAPP_BROKER_TEMPLATE_NAME'),
   brokerTemplateLang: text('WHATSAPP_BROKER_TEMPLATE_LANG', 'he'),
   autoSeed: text('AUTO_SEED') === 'true',
@@ -54,6 +64,7 @@ export function integrationStatus() {
     metaPage: Boolean(config.metaPageId && config.metaPageAccessToken),
     instagram: Boolean(config.metaIgUserId && config.metaPageAccessToken),
     tiktok: Boolean(config.tiktokAccessToken),
+    socialGateway: Boolean(config.socialGatewayApiKey),
     publicBaseUrl: config.publicBaseUrl,
   };
 }
@@ -68,6 +79,9 @@ export function integrationWarnings() {
   }
   if (!config.openaiApiKey) {
     warnings.push('OPENAI_API_KEY is empty. Lead chat and field extraction use the built-in fallback.');
+  }
+  if (!config.socialGatewayApiKey) {
+    warnings.push('ZERNIO_API_KEY is empty. Social posts stay on the direct channel tokens until Zernio is set.');
   }
   if (config.storageProvider === 'local') {
     warnings.push('Storage is local. Facebook, Instagram and TikTok can only fetch public https media URLs.');
