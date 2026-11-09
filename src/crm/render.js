@@ -299,8 +299,29 @@ export function brokersPage(token, brokers) {
       </a>`).join('')}</div>`
     : '<div class="empty">אין עדיין מתווך רשום במערכת.</div>';
   return page(token, 'אזור אישי', 'office', `
-    <header class="page-head"><div><h1>אזור אישי</h1><p>בחרו מתווך כדי לפתוח דירה, להעלות מדיה ולחבר חשבונות.</p></div></header>
+    <header class="page-head">
+      <div><h1>אזור אישי</h1><p>בחרו מתווך כדי לפתוח דירה, להעלות מדיה ולחבר חשבונות.</p></div>
+      <a class="primary" href="${href(token, '/office/brokers/new')}">פתיחת מתווך</a>
+    </header>
     ${cards}`);
+}
+
+export function brokerFormPage(token, { errors = [], values = {} } = {}) {
+  const alert = errors.length ? `<div class="alert">${errors.map((item) => `<p>${escapeHtml(item)}</p>`).join('')}</div>` : '';
+  return page(token, 'פתיחת מתווך', 'office', `
+    <header class="page-head">
+      <div>
+        <h1>פתיחת מתווך</h1>
+        <p>הבוט מזהה מתווך לפי המספר. אחרי השמירה, הודעה מהמספר הזה יכולה להתחיל ב«דירה חדשה».</p>
+      </div>
+    </header>
+    ${alert}
+    <form class="block sheet" method="post" action="${href(token, '/office/brokers')}">
+      <label class="field"><span>שם מלא *</span><input name="fullName" value="${escapeHtml(values.fullName || '')}" required></label>
+      <label class="field"><span>טלפון וואטסאפ *</span><input name="phone" value="${escapeHtml(values.phone || '')}" placeholder="050-1234567" required></label>
+      <label class="field"><span>שם המשרד</span><input name="businessName" value="${escapeHtml(values.businessName || '')}"></label>
+      <button class="primary" type="submit">שמירה</button>
+    </form>`);
 }
 
 export function officePage(token, broker, notice = '') {
@@ -316,6 +337,7 @@ export function officePage(token, broker, notice = '') {
       <div class="actions">
         <a class="primary" href="${href(token, `/office/${broker.id}/properties/new`)}">דירה חדשה</a>
         <a class="primary" href="${href(token, `/office/${broker.id}/connect`)}">חיבור חשבונות</a>
+        <a class="primary" href="${href(token, '/office/brokers/new')}">פתיחת מתווך</a>
       </div>
     </header>
     ${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}

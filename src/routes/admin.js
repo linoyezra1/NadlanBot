@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { integrationStatus } from '../config.js';
 import { normalizePhone } from '../domain/phone.js';
 import { prisma } from '../db.js';
+import { openBroker } from '../services/brokers.js';
 import { deliverResult } from '../services/deliverAll.js';
 import { handleIncoming } from '../services/router.js';
 
@@ -25,7 +26,7 @@ function bubble(reply) {
   return `<p class="bot">${escapeHtml(reply.text || '')}</p>`;
 }
 
-async function render(token, result) {
+async function render(token, result, notice = '') {
   const [brokers, properties, conversations, publications] = await Promise.all([
     prisma.broker.findMany({ orderBy: { createdAt: 'desc' } }),
     prisma.property.findMany({ orderBy: { createdAt: 'desc' }, take: 30, include: { owner: true, _count: { select: { media: true } } } }),
@@ -66,7 +67,15 @@ async function render(token, result) {
 <body>
 <main>
   <h1>לוח תפעול</h1>
-  <p class="muted">הממשק של המתווך הוא וואטסאפ. המסך הזה מיועד לבדיקה ולמעקב.</p>
+  <p class="muted">כאן פותחים מתווך לפי מספר הוואטסאפ. אחר כך המספר מזוהה ויכול לשלוח דירה חדשה.</p>
+  ${notice ? `<p class="hot">${escapeHtml(notice)}</p>` : ''}
+  <form method="post" action="/admin/brokers">
+    <h2>פתיחת מתווך</h2>
+    <label>שם מלא<input name="fullName" required></label>
+    <label>טלפון וואטסאפ<input name="phone" placeholder="050-1234567" required></label>
+    <label>שם המשרד<input name="businessName"></label>
+    <button type="submit">שמירה</button>
+  </form>
   <div class="grid">
     <div class="card">וואטסאפ: ${status.whatsapp ? 'מחובר' : 'לא מוגדר'}</div>
     <div class="card">OpenAI: ${status.openai ? 'מחובר' : 'מצב גיבוי'}</div>
@@ -116,11 +125,27 @@ async function render(token, result) {
 
 router.get('/admin', async (req, res, next) => {
   try {
-    res.type('html').send(await render('', null));
+    res.type('html').send(await render('', null, String(req.query.notice || '')));
   } catch (error) {
     next(error);
   }
   return undefined;
+});
+
+router.post('/admin/brokers', express.urlencoded({ extended: false }), async (req, res, next) => {
+  try {
+    const { broker, created } = await openBroker(req.body);
+    const notice = created
+      ? `${broker.fullName} נפתח. המספר ${broker.phoneNumber} מזוהה בוואטסאפ.`
+      : `${broker.fullName} כבר היה רשום. השם עודכן והחשבון פעיל.`;
+    res.redirect(303, `/admin?notice=${encodeURIComponent(notice)}`);
+  } catch (error) {
+    if (error.status === 400) {
+      res.status(400).type('html').send(await render('', null, error.message));
+      return;
+    }
+    next(error);
+  }
 });
 
 router.post('/admin/try', express.urlencoded({ extended: false }), async (req, res, next) => {

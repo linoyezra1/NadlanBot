@@ -2,7 +2,8 @@ import express from 'express';
 import { config } from '../config.js';
 import { dashboardData, getBroker, getLead, getProperty, listBrokers, listLeads, listProperties } from '../crm/data.js';
 import { readMultipart } from '../crm/multipart.js';
-import { brokersPage, dashboardPage, leadPage, leadsPage, missingPage, officePage, propertiesPage, propertyFormPage, propertyPage } from '../crm/render.js';
+import { brokerFormPage, brokersPage, dashboardPage, leadPage, leadsPage, missingPage, officePage, propertiesPage, propertyFormPage, propertyPage } from '../crm/render.js';
+import { openBroker } from '../services/brokers.js';
 import { addPropertyFiles, createPropertyFromDraft, officeFields } from '../services/properties.js';
 import { createConnectUrl, gatewayConfigured } from '../services/socialPublisher.js';
 
@@ -59,6 +60,28 @@ router.get('/office', wrap(async (req, res) => {
     return;
   }
   res.type('html').send(brokersPage('', brokers));
+}));
+
+router.get('/office/brokers/new', wrap(async (req, res) => {
+  res.type('html').send(brokerFormPage(''));
+}));
+
+router.post('/office/brokers', wrap(async (req, res) => {
+  const values = {
+    fullName: req.body.fullName || '',
+    phone: req.body.phone || '',
+    businessName: req.body.businessName || '',
+  };
+  try {
+    const { broker, created } = await openBroker(values);
+    const notice = created
+      ? 'המתווך נפתח. המספר מזוהה בוואטסאפ ויכול לשלוח דירה חדשה.'
+      : 'המספר כבר היה רשום. השם עודכן והחשבון פעיל.';
+    res.redirect(303, `/office/${broker.id}?notice=${encodeURIComponent(notice)}`);
+  } catch (error) {
+    if (error.status !== 400) throw error;
+    res.status(400).type('html').send(brokerFormPage('', { errors: [error.message], values }));
+  }
 }));
 
 router.get('/office/:brokerId', wrap(async (req, res) => {
