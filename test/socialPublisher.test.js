@@ -63,6 +63,13 @@ test('shows a finished connection screen', () => {
   assert.match(html, /חזרה לוואטסאפ/);
   assert.match(html, /\/brand\/icon\.png/);
   assert.equal(html.includes('החיבור הסתיים'), false);
+  assert.equal(html.includes('פייסבוק'), false);
+  assert.equal(html.includes('טיקטוק'), false);
+  const instagram = connectedPage({ platform: 'instagram', username: 'momoevents_' });
+  assert.match(instagram, /אינסטגרם מחובר/);
+  assert.match(instagram, /momoevents_/);
+  assert.equal(instagram.includes('פייסבוק'), false);
+  assert.equal(instagram.includes('טיקטוק'), false);
 });
 
 test('uses the Zernio host and keeps the v1 prefix', () => {

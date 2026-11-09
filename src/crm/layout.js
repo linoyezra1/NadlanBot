@@ -1,7 +1,8 @@
 import { escapeHtml, href } from './format.js';
 
-export function layout({ title, active, token, body }) {
+export function layout({ title, active, token, body, base = '', subtitle = 'האזור שלך' }) {
   const link = (path, label, key) => `<a class="${active === key ? 'active' : ''}" href="${href(token, path)}">${label}</a>`;
+  const root = base || '/b';
   return `<!doctype html>
 <html lang="he" dir="rtl">
 <head>
@@ -13,14 +14,13 @@ export function layout({ title, active, token, body }) {
 <body>
 <div class="shell">
   <aside class="side">
-    <div class="brand"><strong>נדל"ן</strong><span>מה שהבוט קלט</span></div>
+    <div class="brand"><strong>נדל"ן</strong><span>${escapeHtml(subtitle)}</span></div>
     <nav>
-      ${link('/', 'סקירה', 'home')}
-      ${link('/office', 'אזור אישי', 'office')}
-      ${link('/properties', 'נכסים', 'properties')}
-      ${link('/leads', 'לקוחות', 'leads')}
+      ${link(root, 'סקירה', 'home')}
+      ${link(`${root}/properties`, 'נכסים', 'properties')}
+      ${link(`${root}/leads`, 'לקוחות', 'leads')}
+      ${link(`${root}/connect`, 'חיבור חשבונות', 'connect')}
     </nav>
-    <a class="ops" href="${href(token, '/admin')}">בדיקת וואטסאפ</a>
   </aside>
   <main class="main">${body}</main>
 </div>

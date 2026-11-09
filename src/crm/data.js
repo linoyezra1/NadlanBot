@@ -9,13 +9,19 @@ const leadListInclude = {
   },
 };
 
-export async function dashboardData() {
+function leadWhere(brokerId, extra = {}) {
+  return { role: 'lead', ...extra, ...(brokerId ? { brokerId } : {}) };
+}
+
+export async function dashboardData(brokerId) {
+  const propertyWhere = brokerId ? { brokerId } : {};
   const [propertyCount, leadCount, hotCount, openCount, properties, hotLeads] = await Promise.all([
-    prisma.property.count(),
-    prisma.conversation.count({ where: { role: 'lead' } }),
-    prisma.conversation.count({ where: { role: 'lead', status: 'converted_hot_lead' } }),
-    prisma.conversation.count({ where: { role: 'lead', status: 'active' } }),
+    prisma.property.count({ where: propertyWhere }),
+    prisma.conversation.count({ where: leadWhere(brokerId) }),
+    prisma.conversation.count({ where: leadWhere(brokerId, { status: 'converted_hot_lead' }) }),
+    prisma.conversation.count({ where: leadWhere(brokerId, { status: 'active' }) }),
     prisma.property.findMany({
+      where: propertyWhere,
       orderBy: { createdAt: 'desc' },
       take: 4,
       include: {
@@ -24,7 +30,7 @@ export async function dashboardData() {
       },
     }),
     prisma.conversation.findMany({
-      where: { role: 'lead', status: 'converted_hot_lead' },
+      where: leadWhere(brokerId, { status: 'converted_hot_lead' }),
       orderBy: { updatedAt: 'desc' },
       take: 6,
       include: leadListInclude,
@@ -33,17 +39,20 @@ export async function dashboardData() {
   return { propertyCount, leadCount, hotCount, openCount, properties, hotLeads };
 }
 
-export function listProperties(q) {
+export function listProperties(q, brokerId) {
   const query = String(q || '').trim();
+  const where = {};
+  if (brokerId) where.brokerId = brokerId;
+  if (query) {
+    where.OR = [
+      { code: { contains: query, mode: 'insensitive' } },
+      { address: { contains: query, mode: 'insensitive' } },
+      { city: { contains: query, mode: 'insensitive' } },
+      { neighborhood: { contains: query, mode: 'insensitive' } },
+    ];
+  }
   return prisma.property.findMany({
-    where: query ? {
-      OR: [
-        { code: { contains: query, mode: 'insensitive' } },
-        { address: { contains: query, mode: 'insensitive' } },
-        { city: { contains: query, mode: 'insensitive' } },
-        { neighborhood: { contains: query, mode: 'insensitive' } },
-      ],
-    } : undefined,
+    where,
     orderBy: { createdAt: 'desc' },
     include: {
       media: { orderBy: { createdAt: 'asc' } },
@@ -69,8 +78,8 @@ export function getProperty(code) {
   });
 }
 
-export function listLeads(filter) {
-  const where = { role: 'lead' };
+export function listLeads(filter, brokerId) {
+  const where = leadWhere(brokerId);
   if (filter === 'hot') where.status = 'converted_hot_lead';
   if (filter === 'active') where.status = 'active';
   if (filter === 'closed') where.status = 'closed';
@@ -103,9 +112,9 @@ export function getBroker(id) {
   });
 }
 
-export function getLead(id) {
+export function getLead(id, brokerId) {
   return prisma.conversation.findFirst({
-    where: { id, role: 'lead' },
+    where: leadWhere(brokerId, { id }),
     include: {
       property: { include: { media: { orderBy: { createdAt: 'asc' }, take: 8 } } },
       messages: { orderBy: { timestamp: 'asc' } },

@@ -67,7 +67,7 @@ async function render(token, result, notice = '') {
 <body>
 <main>
   <h1>לוח תפעול</h1>
-  <p class="muted">כאן פותחים מתווך לפי מספר הוואטסאפ. אחר כך המספר מזוהה ויכול לשלוח דירה חדשה.</p>
+  <p class="muted">כאן פותחים מתווך. לכל מתווך יש נתיב משלו, בלי שם משתמש וסיסמה, ומשם הוא רואה סקירה, נכסים, לקוחות וחיבור חשבונות.</p>
   ${notice ? `<p class="hot">${escapeHtml(notice)}</p>` : ''}
   <form method="post" action="/admin/brokers">
     <h2>פתיחת מתווך</h2>
@@ -96,8 +96,8 @@ async function render(token, result, notice = '') {
   ${resultHtml}
   <section>
     <h2>מתווכים</h2>
-    <table><tr><th>שם</th><th>טלפון</th><th>סטטוס</th></tr>
-    ${brokers.map((broker) => `<tr><td>${escapeHtml(broker.fullName)}</td><td>${escapeHtml(broker.phoneNumber)}</td><td>${escapeHtml(broker.status)}</td></tr>`).join('') || '<tr><td colspan="3">אין מתווכים</td></tr>'}
+    <table><tr><th>שם</th><th>טלפון</th><th>סטטוס</th><th>הנתיב</th></tr>
+    ${brokers.map((broker) => `<tr><td>${escapeHtml(broker.fullName)}</td><td>${escapeHtml(broker.phoneNumber)}</td><td>${escapeHtml(broker.status)}</td><td><a href="/b/${escapeHtml(broker.id)}">/b/${escapeHtml(broker.id)}</a></td></tr>`).join('') || '<tr><td colspan="4">אין מתווכים</td></tr>'}
     </table>
   </section>
   <section>
@@ -135,9 +135,10 @@ router.get('/admin', async (req, res, next) => {
 router.post('/admin/brokers', express.urlencoded({ extended: false }), async (req, res, next) => {
   try {
     const { broker, created } = await openBroker(req.body);
+    const path = `/b/${broker.id}`;
     const notice = created
-      ? `${broker.fullName} נפתח. המספר ${broker.phoneNumber} מזוהה בוואטסאפ.`
-      : `${broker.fullName} כבר היה רשום. השם עודכן והחשבון פעיל.`;
+      ? `${broker.fullName} נפתח. הנתיב שלו: ${path}`
+      : `${broker.fullName} כבר היה רשום. השם עודכן והחשבון פעיל. הנתיב: ${path}`;
     res.redirect(303, `/admin?notice=${encodeURIComponent(notice)}`);
   } catch (error) {
     if (error.status === 400) {

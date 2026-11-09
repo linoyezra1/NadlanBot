@@ -1,11 +1,11 @@
 import express from 'express';
 import { config } from '../config.js';
-import { dashboardData, getBroker, getLead, getProperty, listBrokers, listLeads, listProperties } from '../crm/data.js';
+import { dashboardData, getBroker, getLead, getProperty, listLeads, listProperties } from '../crm/data.js';
 import { readMultipart } from '../crm/multipart.js';
-import { brokerFormPage, brokersPage, dashboardPage, leadPage, leadsPage, missingPage, officePage, propertiesPage, propertyFormPage, propertyPage } from '../crm/render.js';
+import { brokerFormPage, connectPage, dashboardPage, leadPage, leadsPage, missingPage, propertiesPage, propertyFormPage, propertyPage } from '../crm/render.js';
 import { openBroker } from '../services/brokers.js';
 import { addPropertyFiles, createPropertyFromDraft, officeFields } from '../services/properties.js';
-import { createConnectUrl, gatewayConfigured } from '../services/socialPublisher.js';
+import { gatewayConfigured, platformAuthUrl } from '../services/socialPublisher.js';
 
 const router = express.Router();
 router.use(express.urlencoded({ extended: false }));
@@ -21,50 +21,57 @@ function wrap(handler) {
   };
 }
 
-router.get('/', wrap(async (req, res) => {
-  res.type('html').send(dashboardPage('', await dashboardData()));
-}));
+function area(broker) {
+  return [`/b/${broker.id}`, broker.fullName];
+}
 
-router.get('/properties', wrap(async (req, res) => {
-  const query = String(req.query.q || '');
-  res.type('html').send(propertiesPage('', await listProperties(query), query));
-}));
+router.get('/', (req, res) => {
+  res.redirect(302, '/admin');
+});
+
+router.get('/properties', (req, res) => {
+  res.redirect(302, '/admin');
+});
+
+router.get('/leads', (req, res) => {
+  res.redirect(302, '/admin');
+});
+
+router.get('/office', (req, res) => {
+  res.redirect(302, '/admin');
+});
+
+router.get('/office/brokers/new', (req, res) => {
+  res.redirect(302, '/admin');
+});
 
 router.get('/properties/:code', wrap(async (req, res) => {
   const property = await getProperty(req.params.code);
-  if (!property) {
+  if (!property?.brokerId) {
     res.status(404).type('html').send(missingPage('', 'properties', 'הנכס לא נמצא', 'אין נכס עם הקוד הזה.'));
     return;
   }
-  res.type('html').send(propertyPage('', property, String(req.query.notice || '')));
-}));
-
-router.get('/leads', wrap(async (req, res) => {
-  const filter = String(req.query.status || '');
-  res.type('html').send(leadsPage('', await listLeads(filter), filter));
+  const notice = req.query.notice ? `?notice=${encodeURIComponent(String(req.query.notice))}` : '';
+  res.redirect(302, `/b/${property.brokerId}/properties/${encodeURIComponent(property.code)}${notice}`);
 }));
 
 router.get('/leads/:id', wrap(async (req, res) => {
   const lead = await getLead(req.params.id);
-  if (!lead) {
+  if (!lead?.brokerId) {
     res.status(404).type('html').send(missingPage('', 'leads', 'הלקוח לא נמצא', 'אין שיחה עם המזהה הזה.'));
     return;
   }
-  res.type('html').send(leadPage('', lead));
+  res.redirect(302, `/b/${lead.brokerId}/leads/${encodeURIComponent(lead.id)}`);
 }));
 
-router.get('/office', wrap(async (req, res) => {
-  const brokers = await listBrokers();
-  if (brokers.length === 1) {
-    res.redirect(302, `/office/${brokers[0].id}`);
-    return;
-  }
-  res.type('html').send(brokersPage('', brokers));
-}));
+router.get('/office/:brokerId', (req, res) => {
+  res.redirect(302, `/b/${req.params.brokerId}`);
+});
 
-router.get('/office/brokers/new', wrap(async (req, res) => {
-  res.type('html').send(brokerFormPage(''));
-}));
+router.get('/office/:brokerId/*', (req, res) => {
+  const tail = req.params[0] ? `/${req.params[0]}` : '';
+  res.redirect(302, `/b/${req.params.brokerId}${tail}`);
+});
 
 router.post('/office/brokers', wrap(async (req, res) => {
   const values = {
@@ -73,39 +80,37 @@ router.post('/office/brokers', wrap(async (req, res) => {
     businessName: req.body.businessName || '',
   };
   try {
-    const { broker, created } = await openBroker(values);
-    const notice = created
-      ? 'המתווך נפתח. המספר מזוהה בוואטסאפ ויכול לשלוח דירה חדשה.'
-      : 'המספר כבר היה רשום. השם עודכן והחשבון פעיל.';
-    res.redirect(303, `/office/${broker.id}?notice=${encodeURIComponent(notice)}`);
+    const { broker } = await openBroker(values);
+    res.redirect(303, `/b/${broker.id}`);
   } catch (error) {
     if (error.status !== 400) throw error;
     res.status(400).type('html').send(brokerFormPage('', { errors: [error.message], values }));
   }
 }));
 
-router.get('/office/:brokerId', wrap(async (req, res) => {
+router.get('/b/:brokerId', wrap(async (req, res) => {
   const broker = await getBroker(req.params.brokerId);
   if (!broker) {
-    res.status(404).type('html').send(missingPage('', 'office', 'המתווך לא נמצא', 'אין אזור אישי עם המזהה הזה.'));
+    res.status(404).type('html').send(missingPage('', 'home', 'המתווך לא נמצא', 'אין נתיב עם המזהה הזה.'));
     return;
   }
-  res.type('html').send(officePage('', broker, String(req.query.notice || '')));
+  const [base, subtitle] = area(broker);
+  res.type('html').send(dashboardPage('', await dashboardData(broker.id), base, subtitle));
 }));
 
-router.get('/office/:brokerId/properties/new', wrap(async (req, res) => {
+router.get('/b/:brokerId/properties/new', wrap(async (req, res) => {
   const broker = await getBroker(req.params.brokerId);
   if (!broker) {
-    res.status(404).type('html').send(missingPage('', 'office', 'המתווך לא נמצא', 'אין אזור אישי עם המזהה הזה.'));
+    res.status(404).type('html').send(missingPage('', 'properties', 'המתווך לא נמצא', 'אין נתיב עם המזהה הזה.'));
     return;
   }
   res.type('html').send(propertyFormPage('', broker));
 }));
 
-router.post('/office/:brokerId/properties', wrap(async (req, res) => {
+router.post('/b/:brokerId/properties', wrap(async (req, res) => {
   const broker = await getBroker(req.params.brokerId);
   if (!broker) {
-    res.status(404).type('html').send(missingPage('', 'office', 'המתווך לא נמצא', 'אין אזור אישי עם המזהה הזה.'));
+    res.status(404).type('html').send(missingPage('', 'properties', 'המתווך לא נמצא', 'אין נתיב עם המזהה הזה.'));
     return;
   }
   const payload = await formPayload(req);
@@ -118,10 +123,32 @@ router.post('/office/:brokerId/properties', wrap(async (req, res) => {
   const media = await addPropertyFiles(property.id, payload.files);
   const notice = mediaNotice(media);
   const query = notice ? `?notice=${encodeURIComponent(notice)}` : '';
-  res.redirect(303, `/properties/${encodeURIComponent(property.code)}${query}`);
+  res.redirect(303, `/b/${broker.id}/properties/${encodeURIComponent(property.code)}${query}`);
 }));
 
-router.post('/office/:brokerId/properties/:code/media', wrap(async (req, res) => {
+router.get('/b/:brokerId/properties', wrap(async (req, res) => {
+  const broker = await getBroker(req.params.brokerId);
+  if (!broker) {
+    res.status(404).type('html').send(missingPage('', 'properties', 'המתווך לא נמצא', 'אין נתיב עם המזהה הזה.'));
+    return;
+  }
+  const query = String(req.query.q || '');
+  const [base, subtitle] = area(broker);
+  res.type('html').send(propertiesPage('', await listProperties(query, broker.id), query, base, subtitle));
+}));
+
+router.get('/b/:brokerId/properties/:code', wrap(async (req, res) => {
+  const broker = await getBroker(req.params.brokerId);
+  const property = await getProperty(req.params.code);
+  if (!broker || !property || property.brokerId !== broker.id) {
+    res.status(404).type('html').send(missingPage('', 'properties', 'הנכס לא נמצא', 'אין נכס עם הקוד הזה אצל המתווך.'));
+    return;
+  }
+  const [base, subtitle] = area(broker);
+  res.type('html').send(propertyPage('', property, String(req.query.notice || ''), base, subtitle));
+}));
+
+router.post('/b/:brokerId/properties/:code/media', wrap(async (req, res) => {
   const property = await getProperty(req.params.code);
   if (!property || property.brokerId !== req.params.brokerId) {
     res.status(404).type('html').send(missingPage('', 'properties', 'הנכס לא נמצא', 'אין נכס עם הקוד הזה אצל המתווך.'));
@@ -131,21 +158,53 @@ router.post('/office/:brokerId/properties/:code/media', wrap(async (req, res) =>
   const media = await addPropertyFiles(property.id, payload.files);
   const notice = mediaNotice(media) || (payload.files.length ? '' : 'לא נבחר קובץ.');
   const query = notice ? `?notice=${encodeURIComponent(notice)}` : '';
-  res.redirect(303, `/properties/${encodeURIComponent(property.code)}${query}`);
+  res.redirect(303, `/b/${req.params.brokerId}/properties/${encodeURIComponent(property.code)}${query}`);
 }));
 
-router.get('/office/:brokerId/connect', wrap(async (req, res) => {
+router.get('/b/:brokerId/leads', wrap(async (req, res) => {
   const broker = await getBroker(req.params.brokerId);
   if (!broker) {
-    res.status(404).type('html').send(missingPage('', 'office', 'המתווך לא נמצא', 'אין אזור אישי עם המזהה הזה.'));
+    res.status(404).type('html').send(missingPage('', 'leads', 'המתווך לא נמצא', 'אין נתיב עם המזהה הזה.'));
+    return;
+  }
+  const filter = String(req.query.status || '');
+  const [base, subtitle] = area(broker);
+  res.type('html').send(leadsPage('', await listLeads(filter, broker.id), filter, base, subtitle));
+}));
+
+router.get('/b/:brokerId/leads/:id', wrap(async (req, res) => {
+  const broker = await getBroker(req.params.brokerId);
+  const lead = await getLead(req.params.id, req.params.brokerId);
+  if (!broker || !lead) {
+    res.status(404).type('html').send(missingPage('', 'leads', 'הלקוח לא נמצא', 'אין שיחה עם המזהה הזה.'));
+    return;
+  }
+  const [base, subtitle] = area(broker);
+  res.type('html').send(leadPage('', lead, base, subtitle));
+}));
+
+router.get('/b/:brokerId/connect', wrap(async (req, res) => {
+  const broker = await getBroker(req.params.brokerId);
+  if (!broker) {
+    res.status(404).type('html').send(missingPage('', 'connect', 'המתווך לא נמצא', 'אין נתיב עם המזהה הזה.'));
+    return;
+  }
+  const notice = gatewayConfigured() ? '' : 'שער הסושיאל עדיין לא מוגדר בשרת.';
+  res.type('html').send(connectPage('', broker, notice));
+}));
+
+router.get('/b/:brokerId/connect/:platform', wrap(async (req, res) => {
+  const broker = await getBroker(req.params.brokerId);
+  if (!broker) {
+    res.status(404).type('html').send(missingPage('', 'connect', 'המתווך לא נמצא', 'אין נתיב עם המזהה הזה.'));
     return;
   }
   if (!gatewayConfigured()) {
-    res.type('html').send(officePage('', broker, 'שער הסושיאל עדיין לא מוגדר בשרת.'));
+    res.type('html').send(connectPage('', broker, 'שער הסושיאל עדיין לא מוגדר בשרת.'));
     return;
   }
-  const connectUrl = await createConnectUrl(broker.id);
-  res.redirect(302, connectUrl);
+  const url = await platformAuthUrl(broker.id, req.params.platform);
+  res.redirect(302, url);
 }));
 
 async function formPayload(req) {

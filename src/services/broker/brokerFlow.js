@@ -31,7 +31,7 @@ import { attachMedia, countConversationMedia } from '../media.js';
 import { generateMarketing } from '../openai.js';
 import { attachDraftMedia, createPropertyFromDraft, findBrokerProperty, listBrokerProperties } from '../properties.js';
 import { distribute } from '../social/distribute.js';
-import { createConnectUrl, gatewayConfigured } from '../socialPublisher.js';
+import { brokerConnectUrl } from '../socialPublisher.js';
 
 function freshFlow() {
   return {
@@ -89,14 +89,8 @@ async function addGroup(broker, parsed) {
   return `הקבוצה "${parsed.name}" נשמרה. פרסום אוטומטי יעבוד רק אם העמוד מנהל בקבוצה והאפליקציה מותקנת בה.`;
 }
 
-async function connectText(broker) {
-  if (!gatewayConfigured()) return 'שער הסושיאל עדיין לא מוגדר בשרת.';
-  try {
-    const connectUrl = await createConnectUrl(broker.id);
-    return `לחץ כאן כדי לחבר את פייסבוק, אינסטגרם וטיקטוק: ${connectUrl}`;
-  } catch (error) {
-    return `לא הצלחתי להכין קישור חיבור: ${error.message}`;
-  }
+function connectText(broker) {
+  return `לחץ כאן כדי לחבר את פייסבוק, אינסטגרם וטיקטוק: ${brokerConnectUrl(broker.id)}`;
 }
 
 async function groupsText(broker) {

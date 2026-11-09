@@ -79,7 +79,8 @@ async function applyConnection(body) {
     },
   });
   if (!added || broker.socialConnected) return;
-  await deliver(broker.phoneNumber, [text('חשבונות הסושיאל חוברו בהצלחה! מעכשיו כל נכס שתפרסם יופץ לעמודים שלך.')]);
+  const label = NETWORK_LABELS[platform] || 'החשבון';
+  await deliver(broker.phoneNumber, [text(`${label} חובר בהצלחה.`)]);
 }
 
 function receive(req, res) {
@@ -104,7 +105,7 @@ const NETWORK_LABELS = { facebook: 'פייסבוק', instagram: 'אינסטגר�
 router.get('/connect/:token', (req, res) => {
   const session = readConnectSession(req.params.token);
   if (!session) {
-    res.status(404).type('html').send('<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><body><p>הקישור כבר לא בתוקף. שלחו שוב "חיבור רשתות" בוואטסאפ.</p></body></html>');
+    res.status(404).type('html').send('<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><body><p>הקישור הזה כבר לא בשימוש. החיבור נמצא בנתיב האישי של המתווך, בדף חיבור חשבונות.</p></body></html>');
     return;
   }
   const buttons = session.links.map((item) => {
@@ -114,15 +115,21 @@ router.get('/connect/:token', (req, res) => {
   res.type('html').send(`<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><title>חיבור רשתות</title><body><h1>חברו את החשבונות</h1>${buttons}</body></html>`);
 });
 
-router.get('/callback', (req, res) => {
+function finishConnection(req, res) {
+  const raw = String(req.params.platform || req.query.platform || '').toLowerCase();
+  const platform = NETWORK_LABELS[raw] ? raw : '';
   const username = String(req.query.username || '').trim().slice(0, 80);
   const number = String(config.whatsappDisplayNumber || '').replace(/\D/g, '');
   res.type('html').send(connectedPage({
     iconUrl: brandIconUrl(),
     whatsappUrl: number ? `https://wa.me/${number}` : '',
     username,
+    platform,
   }));
-});
+}
+
+router.get('/callback', finishConnection);
+router.get('/callback/:platform', finishConnection);
 
 router.get('/connected', (_req, res) => {
   res.redirect(302, '/social/callback');

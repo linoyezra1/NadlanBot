@@ -3,7 +3,7 @@ import { forwardCard, groupShareMessage } from '../../domain/share.js';
 import { clickToWhatsAppLink, shortClickToWhatsAppLink } from '../../domain/waLink.js';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
-import { createConnectUrl, publishPropertyPost } from '../socialPublisher.js';
+import { brokerConnectUrl, publishPropertyPost } from '../socialPublisher.js';
 import { resolveAccounts } from './credentials.js';
 import { publishFacebookGroup, publishFacebookPage, publishInstagram } from './meta.js';
 import { publishTikTokVideo, tiktokCaption } from './tiktok.js';
@@ -123,12 +123,7 @@ async function distributeThroughGateway({ broker, property, channels, groups, ca
   } catch (error) {
     let detail = error.message;
     if (error.code === 'NOT_CONNECTED' || error.code === 'NO_ACCOUNTS') {
-      try {
-        const connectUrl = await createConnectUrl(broker.id);
-        detail = `${detail}\nלחץ כאן כדי לחבר את פייסבוק, אינסטגרם וטיקטוק: ${connectUrl}`;
-      } catch (connectError) {
-        detail = `${detail}\n${connectError.message}`;
-      }
+      detail = `${detail}\nלחץ כאן כדי לחבר את פייסבוק, אינסטגרם וטיקטוק: ${brokerConnectUrl(broker.id)}`;
     }
     results = [{ platform: 'social', status: 'failed', error: detail }];
   }

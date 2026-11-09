@@ -19,10 +19,17 @@ function escapeHtml(value) {
   }[char]));
 }
 
-export function connectedPage({ iconUrl = '', whatsappUrl = '', username = '' } = {}) {
+const NETWORK_LABELS = { facebook: 'פייסבוק', instagram: 'אינסטגרם', tiktok: 'טיקטוק' };
+
+export function connectedPage({ iconUrl = '', whatsappUrl = '', username = '', platform = '' } = {}) {
   const mark = iconUrl
     ? `<img src="${escapeHtml(iconUrl)}" alt="">`
     : '<span class="check" aria-hidden="true">✓</span>';
+  const name = NETWORK_LABELS[platform] || '';
+  const summary = name
+    ? `${name} מחובר. מעכשיו נכס שתפרסם יופץ גם לחשבון הזה.`
+    : 'החיבור הושלם. מעכשיו נכס שתפרסם יופץ לחשבון שחיברת.';
+  const chips = name ? `<span>${name}</span>` : '';
   const account = username
     ? `<p class="account">החשבון ${escapeHtml(username)} נוסף.</p>`
     : '';
@@ -110,9 +117,9 @@ export function connectedPage({ iconUrl = '', whatsappUrl = '', username = '' } 
     <div class="mark">${mark}</div>
     <div class="pill">מחובר</div>
     <h1>החיבור הושלם</h1>
-    <p>פייסבוק, אינסטגרם וטיקטוק מחוברים. מעכשיו כל נכס שתפרסם יופץ לעמודים שלך.</p>
+    <p>${summary}</p>
     ${account}
-    <div class="nets"><span>פייסבוק</span><span>אינסטגרם</span><span>טיקטוק</span></div>
+    <div class="nets">${chips}</div>
     ${back}
   </main>
 </body>

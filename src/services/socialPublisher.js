@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { isPublicHttpUrl } from '../domain/channels.js';
 import { clickToWhatsAppLink, postWaMe } from '../domain/waLink.js';
 import { config } from '../config.js';
@@ -123,6 +122,10 @@ export async function ensureSocialProfile(broker) {
   return profileId;
 }
 
+export function brokerConnectUrl(brokerId) {
+  return `${config.publicBaseUrl}/b/${brokerId}/connect`;
+}
+
 export async function createConnectUrl(brokerId) {
   const broker = await prisma.broker.findUnique({ where: { id: brokerId } });
   if (!broker) {
@@ -130,30 +133,28 @@ export async function createConnectUrl(brokerId) {
     error.code = 'NOT_FOUND';
     throw error;
   }
-  const redirectUrl = `${config.publicBaseUrl}/social/callback`;
-  try {
-    const json = await gateway('/profiles/connect', {
-      method: 'POST',
-      body: { externalUserId: brokerId, redirectUrl },
-    });
-    const connectUrl = json.connectUrl || json.url || json.authUrl;
-    await saveProfileId(broker.id, profileIdFrom(json));
-    if (connectUrl) return connectUrl;
-  } catch (error) {
-    if (error.status !== 404 && error.status !== 405) throw error;
-  }
+  return brokerConnectUrl(broker.id);
+}
 
-  const profileId = await ensureSocialProfile(broker);
-  const links = [];
-  for (const platform of NETWORKS) {
-    const query = new URLSearchParams({ profileId, redirect_url: redirectUrl });
-    const json = await gateway(`/connect/${platform}?${query}`);
-    if (!json.authUrl) throw new Error(`אין קישור חיבור ל-${platform}`);
-    links.push({ platform, url: json.authUrl });
+export async function platformAuthUrl(brokerId, platform) {
+  if (!NETWORKS.includes(platform)) {
+    const error = new Error('הרשת לא נתמכת');
+    error.status = 404;
+    throw error;
   }
-  const token = crypto.randomBytes(18).toString('hex');
-  connectSessions.set(token, { links, expires: Date.now() + 60 * 60 * 1000 });
-  return `${config.publicBaseUrl}/social/connect/${token}`;
+  const broker = await prisma.broker.findUnique({ where: { id: brokerId } });
+  if (!broker) {
+    const error = new Error('המתווך לא נמצא');
+    error.code = 'NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  const profileId = await ensureSocialProfile(broker);
+  const redirectUrl = `${config.publicBaseUrl}/social/callback/${platform}`;
+  const query = new URLSearchParams({ profileId, redirect_url: redirectUrl });
+  const json = await gateway(`/connect/${platform}?${query}`);
+  if (!json.authUrl) throw new Error(`אין קישור חיבור ל-${platform}`);
+  return json.authUrl;
 }
 
 function accountId(account) {
