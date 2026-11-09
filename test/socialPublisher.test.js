@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import test from 'node:test';
 import { zernioApiRoot } from '../src/config.js';
+import { cloudinaryFolderName, signedCloudinaryParams } from '../src/services/storage.js';
 import { facebookSharerUrl, forwardCard, groupShareMessage } from '../src/domain/share.js';
 import { signaturesMatch } from '../src/routes/socialWebhook.js';
 import { selectPublicMedia } from '../src/services/socialPublisher.js';
@@ -23,6 +24,32 @@ test('checks the social gateway webhook signature', () => {
   const header = crypto.createHmac('sha256', 'secret').update(body).digest('hex');
   assert.equal(signaturesMatch('secret', body, header), true);
   assert.equal(signaturesMatch('secret', body, 'nope'), false);
+});
+
+test('signs Cloudinary uploads into the nadlanbot folder', () => {
+  assert.equal(cloudinaryFolderName('nadlan bot'), 'nadlanbot');
+  const dynamic = signedCloudinaryParams({
+    apiSecret: 'secret',
+    folder: 'nadlanbot',
+    publicId: '2026/abc',
+    timestamp: 1700000000,
+    mode: 'dynamic',
+  });
+  const fixed = signedCloudinaryParams({
+    apiSecret: 'secret',
+    folder: 'nadlanbot',
+    publicId: '2026/abc',
+    timestamp: 1700000000,
+    mode: 'fixed',
+  });
+  assert.equal(dynamic.asset_folder, 'nadlanbot');
+  assert.equal(dynamic.signature, crypto.createHash('sha1')
+    .update('asset_folder=nadlanbot&public_id=2026/abc&timestamp=1700000000secret')
+    .digest('hex'));
+  assert.equal(fixed.folder, 'nadlanbot');
+  assert.equal(fixed.signature, crypto.createHash('sha1')
+    .update('folder=nadlanbot&public_id=2026/abc&timestamp=1700000000secret')
+    .digest('hex'));
 });
 
 test('uses the Zernio host and keeps the v1 prefix', () => {

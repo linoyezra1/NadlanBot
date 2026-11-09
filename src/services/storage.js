@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { config } from '../config.js';
+import { activeStorage, config } from '../config.js';
 
 const EXT_BY_MIME = {
   'image/jpeg': '.jpg',
@@ -30,31 +30,72 @@ async function storeLocal({ buffer, mimeType, filename }) {
   return { url: `${config.publicBaseUrl}/media/${key}`, key };
 }
 
-function cloudinarySignature(params, secret) {
-  const payload = Object.keys(params).sort().map((key) => `${key}=${params[key]}`).join('&');
-  return crypto.createHash('sha1').update(payload + secret).digest('hex');
+export function cloudinaryFolderName(value) {
+  const cleaned = String(value || 'nadlanbot').trim().replace(/^\/+|\/+$/g, '').replace(/[^a-zA-Z0-9/_-]/g, '');
+  return cleaned || 'nadlanbot';
 }
 
-async function storeCloudinary({ buffer, mimeType, filename }) {
-  const timestamp = Math.floor(Date.now() / 1000);
-  const folder = 'nadlanbot';
-  const signature = cloudinarySignature({ folder, timestamp }, config.cloudinaryApiSecret);
+export function signedCloudinaryParams({ apiSecret, folder, publicId, timestamp, mode = 'dynamic' }) {
+  const params = {
+    public_id: publicId,
+    timestamp,
+  };
+  const name = cloudinaryFolderName(folder);
+  if (mode === 'fixed') params.folder = name;
+  else params.asset_folder = name;
+  const payload = Object.keys(params).sort().map((key) => `${key}=${params[key]}`).join('&');
+  return {
+    ...params,
+    signature: crypto.createHash('sha1').update(payload + apiSecret).digest('hex'),
+  };
+}
+
+function folderModes() {
+  if (config.cloudinaryFolderMode === 'fixed') return ['fixed'];
+  if (config.cloudinaryFolderMode === 'dynamic') return ['dynamic'];
+  return ['dynamic', 'fixed'];
+}
+
+async function postCloudinary(file, mode) {
+  const publicId = `${new Date().getUTCFullYear()}/${crypto.randomUUID()}`;
+  const signed = signedCloudinaryParams({
+    apiSecret: config.cloudinaryApiSecret,
+    folder: config.cloudinaryFolder,
+    publicId,
+    timestamp: Math.floor(Date.now() / 1000),
+    mode,
+  });
   const form = new FormData();
-  form.append('file', new Blob([buffer], { type: mimeType || 'application/octet-stream' }), filename || 'upload');
+  form.append('file', new Blob([file.buffer], { type: file.mimeType || 'application/octet-stream' }), file.filename || 'upload');
   form.append('api_key', config.cloudinaryApiKey);
-  form.append('timestamp', String(timestamp));
-  form.append('signature', signature);
-  form.append('folder', folder);
+  form.append('timestamp', String(signed.timestamp));
+  form.append('signature', signed.signature);
+  form.append('public_id', signed.public_id);
+  if (signed.asset_folder) form.append('asset_folder', signed.asset_folder);
+  if (signed.folder) form.append('folder', signed.folder);
   const response = await fetch(`https://api.cloudinary.com/v1_1/${config.cloudinaryCloudName}/auto/upload`, {
     method: 'POST',
     body: form,
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(120000),
   });
   const json = await response.json().catch(() => ({}));
-  if (!response.ok || !json.secure_url) {
-    throw new Error(json.error?.message || 'העלאה ל-Cloudinary נכשלה');
+  return { ok: response.ok && Boolean(json.secure_url), json };
+}
+
+async function storeCloudinary(file) {
+  if (!config.cloudinaryCloudName || !config.cloudinaryApiKey || !config.cloudinaryApiSecret) {
+    throw new Error('Cloudinary לא מוגדר. חסרים CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY או CLOUDINARY_API_SECRET.');
   }
-  return { url: json.secure_url, key: json.public_id };
+  const modes = folderModes();
+  let failure = 'העלאה ל-Cloudinary נכשלה';
+  for (let index = 0; index < modes.length; index += 1) {
+    const result = await postCloudinary(file, modes[index]);
+    if (result.ok) return { url: result.json.secure_url, key: result.json.public_id };
+    failure = result.json.error?.message || failure;
+    const another = index < modes.length - 1;
+    if (!another || !/folder/i.test(failure)) break;
+  }
+  throw new Error(failure);
 }
 
 async function storeS3({ buffer, mimeType, filename }) {
@@ -80,7 +121,7 @@ async function storeS3({ buffer, mimeType, filename }) {
 }
 
 export async function storeBuffer(file) {
-  const provider = config.storageProvider || 'local';
+  const provider = activeStorage();
   if (provider === 'cloudinary') return storeCloudinary(file);
   if (provider === 's3') return storeS3(file);
   return storeLocal(file);

@@ -31,6 +31,8 @@ export const config = {
   cloudinaryCloudName: text('CLOUDINARY_CLOUD_NAME'),
   cloudinaryApiKey: text('CLOUDINARY_API_KEY'),
   cloudinaryApiSecret: text('CLOUDINARY_API_SECRET'),
+  cloudinaryFolder: text('CLOUDINARY_FOLDER', 'nadlanbot').replace(/^\/+|\/+$/g, '') || 'nadlanbot',
+  cloudinaryFolderMode: text('CLOUDINARY_FOLDER_MODE', 'auto').toLowerCase(),
   s3Bucket: text('S3_BUCKET'),
   s3Region: text('S3_REGION'),
   s3AccessKeyId: text('S3_ACCESS_KEY_ID'),
@@ -56,11 +58,21 @@ export const config = {
   uploadsDir: text('UPLOADS_DIR'),
 };
 
+export function cloudinaryConfigured() {
+  return Boolean(config.cloudinaryCloudName && config.cloudinaryApiKey && config.cloudinaryApiSecret);
+}
+
+export function activeStorage() {
+  if (config.storageProvider === 's3') return 's3';
+  if (cloudinaryConfigured()) return 'cloudinary';
+  return config.storageProvider === 'cloudinary' ? 'cloudinary' : 'local';
+}
+
 export function integrationStatus() {
   return {
     whatsapp: Boolean(config.twilioAccountSid && config.twilioAuthToken && (config.twilioWhatsappNumber || config.twilioMessagingServiceSid)),
     openai: Boolean(config.openaiApiKey),
-    storage: config.storageProvider || 'local',
+    storage: activeStorage(),
     metaPage: Boolean(config.metaPageId && config.metaPageAccessToken),
     instagram: Boolean(config.metaIgUserId && config.metaPageAccessToken),
     tiktok: Boolean(config.tiktokAccessToken),
@@ -83,7 +95,9 @@ export function integrationWarnings() {
   if (!config.socialGatewayApiKey) {
     warnings.push('ZERNIO_API_KEY is empty. Social posts stay on the direct channel tokens until Zernio is set.');
   }
-  if (config.storageProvider === 'local') {
+  if (activeStorage() === 'cloudinary' && !cloudinaryConfigured()) {
+    warnings.push('Cloudinary is selected but CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY or CLOUDINARY_API_SECRET is empty.');
+  } else if (activeStorage() === 'local') {
     warnings.push('Storage is local. Facebook, Instagram and TikTok can only fetch public https media URLs.');
   }
   if (config.nodeEnv === 'production' && !config.twilioAuthToken) {
