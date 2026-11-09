@@ -1,5 +1,5 @@
 import { isPublicHttpUrl } from '../domain/channels.js';
-import { clickToWhatsAppLink, postWaMe } from '../domain/waLink.js';
+import { clickToWhatsAppLink, naturalWaLink, postWaMe, streetLabel } from '../domain/waLink.js';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 
@@ -32,6 +32,43 @@ export function selectPublicMedia(media) {
     .map((item) => ({ url: item.cloudUrl, type: mediaType(item) }));
 }
 
+export function splitFeedMedia(media) {
+  const items = selectPublicMedia(media);
+  const images = items.filter((item) => item.type === 'image').slice(0, 10);
+  const video = items.find((item) => item.type === 'video' && /\.(mp4|mov)(\?|$)/i.test(item.url || ''));
+  return { images, video: video ? [video] : [] };
+}
+
+export function facebookPostExtras(property, images = []) {
+  const link = naturalWaLink(property);
+  const data = {};
+  if (link) data.firstComment = `לפרטים ותמונות בוואטסאפ:\n${link}`;
+  if (link && images.length >= 2) {
+    const deal = property?.listingType === 'sale' ? 'למכירה' : property?.listingType === 'rent' ? 'להשכרה' : 'דירה';
+    const street = streetLabel(property?.address);
+    const name = [deal, street || property?.city || ''].filter(Boolean).join(' · ').slice(0, 80);
+    const price = property?.price != null ? `${new Intl.NumberFormat('he-IL').format(property.price)} ₪` : '';
+    const description = [property?.city, price].filter(Boolean).join(' · ').slice(0, 80);
+    data.facebookSettings = {
+      carouselLink: link,
+      carouselCards: images.slice(0, 10).map(() => ({
+        link,
+        name: name || 'לפרטים',
+        ...(description ? { description } : {}),
+      })),
+    };
+  }
+  return data;
+}
+
+function withFacebookExtras(platforms, property, images) {
+  const extras = facebookPostExtras(property, images);
+  if (!Object.keys(extras).length) return platforms;
+  return platforms.map((item) => (item.platform === 'facebook'
+    ? { ...item, platformSpecificData: extras }
+    : item));
+}
+
 export const SYSTEM_PROMPT_POST_GENERATION = `
 אתה עוזר שיווקי בכיר למתווכי נדל"ן באזור המרכז/בת ים.
 תפקידך לייצר פוסט לפייסבוק ואינסטגרם מתוך פרטי הנכס.
@@ -41,19 +78,20 @@ export const SYSTEM_PROMPT_POST_GENERATION = `
 2. כותרת ברורה: "להשכרה {חדרים} חדרים ב{פרויקט/עיר}" או "למכירה ב{עיר}".
 3. ציין במדויק: כתובת, קומה, מפרט (מרפסת, חניה, מחסן, ממ"ד), שדרוגים מיוחדים ומוצרי חשמל אם קיימים.
 4. בסוף: ציין מחיר ואת הביטוי "לרציניים בלבד" (להשכרה) או "למביני עניין / מתחת למחיר השוק" (למכירה).
-5. סיים עם פרטי התקשרות של המתווך וקישור wa.me המכיל את קוד הנכס.
+5. סיים עם פרטי התקשרות של המתווך וקישור הוואטסאפ שנמסר. אל תכתוב קוד נכס.
 אל תמציא עובדות שלא נמסרו. אל תזכיר את בעל הנכס.
 `.trim();
 
-export function composeCaption(caption, code) {
-  const link = postWaMe(code) || clickToWhatsAppLink(code);
+export function composeCaption(caption, property) {
+  const subject = property && typeof property === 'object' ? property : { code: property };
+  const link = naturalWaLink(subject) || postWaMe(subject.code) || clickToWhatsAppLink(subject.code);
   const body = String(caption || '').trim();
   if (!link) return body;
   if (body.includes(link)) return body;
   return body ? `${body}\n\n${link}` : link;
 }
 
-async function gateway(pathname, { method = 'GET', body } = {}) {
+async function gateway(pathname, { method = 'GET', body, headers } = {}) {
   if (!gatewayConfigured()) {
     const error = new Error('SOCIAL_GATEWAY_API_KEY is empty');
     error.code = 'GATEWAY_OFF';
@@ -65,6 +103,7 @@ async function gateway(pathname, { method = 'GET', body } = {}) {
       Authorization: `Bearer ${config.socialGatewayApiKey}`,
       'Content-Type': 'application/json',
       Accept: 'application/json',
+      ...headers,
     },
     body: body == null ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(30000),
@@ -180,14 +219,14 @@ export async function publishPropertyPost({ brokerId, propertyId, channels, capt
 
   const listed = await gateway(`/accounts?profileId=${encodeURIComponent(broker.socialProfileId)}`);
   const wanted = new Set((channels || NETWORKS).filter((name) => NETWORKS.includes(name)));
-  const mediaItems = selectPublicMedia(property.media);
-  const hasVideo = mediaItems.some((item) => item.type === 'video');
+  const { images, video } = splitFeedMedia(property.media);
+  const hasVideo = video.length > 0;
   const accounts = (listed.accounts || []).filter((account) => account.isActive !== false && wanted.has(account.platform));
   const platforms = [];
   const skipped = [];
   for (const account of accounts) {
     if (account.platform === 'tiktok' && !hasVideo) {
-      skipped.push({ platform: 'tiktok', status: 'skipped', error: 'טיקטוק דורש סרטון בכתובת https ציבורית' });
+      skipped.push({ platform: 'tiktok', status: 'skipped', error: 'טיקטוק דורש סרטון MP4 או MOV בכתובת https ציבורית' });
       continue;
     }
     const id = accountId(account);
@@ -199,18 +238,43 @@ export async function publishPropertyPost({ brokerId, propertyId, channels, capt
     throw error;
   }
 
-  const content = composeCaption(caption || property.marketingText, property.code);
-  const json = await gateway('/posts', {
-    method: 'POST',
-    body: {
+  const content = composeCaption(caption || property.marketingText, property);
+  const facebook = platforms.filter((item) => item.platform === 'facebook');
+  const instagram = platforms.filter((item) => item.platform === 'instagram');
+  const tiktok = platforms.filter((item) => item.platform === 'tiktok');
+  const requests = [];
+  if (images.length) {
+    const withPhotos = withFacebookExtras([...facebook, ...instagram], property, images);
+    if (withPhotos.length) requests.push({ mediaItems: images, platforms: withPhotos });
+    if (tiktok.length && hasVideo) requests.push({ mediaItems: video, platforms: tiktok });
+    else if (tiktok.length) skipped.push({ platform: 'tiktok', status: 'skipped', error: 'טיקטוק דורש סרטון MP4 או MOV בכתובת https ציבורית' });
+  } else if (hasVideo) {
+    requests.push({ mediaItems: video, platforms: withFacebookExtras(platforms, property, []) });
+  } else if (facebook.length) {
+    requests.push({ mediaItems: [], platforms: withFacebookExtras(facebook, property, []) });
+    for (const item of [...instagram, ...tiktok]) {
+      skipped.push({ platform: item.platform, status: 'skipped', error: 'אין תמונה או סרטון ציבורי לפרסום' });
+    }
+  } else {
+    const error = new Error('אין תמונה או סרטון ציבורי לפרסום');
+    error.code = 'NO_MEDIA';
+    throw error;
+  }
+  const returned = [];
+  let postId = null;
+  for (const request of requests) {
+    const body = {
       content,
-      mediaItems,
-      platforms,
+      platforms: request.platforms,
       publishNow: true,
-    },
-  });
-  const post = json.post || {};
-  const returned = Array.isArray(post.platforms) ? post.platforms : platforms.map((item) => ({ ...item, status: 'published' }));
+    };
+    if (request.mediaItems.length) body.mediaItems = request.mediaItems;
+    const json = await gateway('/posts', { method: 'POST', body });
+    const post = json.post || {};
+    postId = postId || post._id || null;
+    const rows = Array.isArray(post.platforms) ? post.platforms : request.platforms.map((item) => ({ ...item, status: 'published' }));
+    returned.push(...rows.map((row) => ({ ...row, zernioPostId: post._id || null })));
+  }
   const urls = {
     facebook: property.facebookPostUrl,
     instagram: property.instagramPostUrl,
@@ -220,8 +284,10 @@ export async function publishPropertyPost({ brokerId, propertyId, channels, capt
   const results = skipped.slice();
   for (const item of returned) {
     const url = item.platformPostUrl || null;
-    const id = item.platformPostId || item.postId || post._id || null;
-    if (item.platform) ids[item.platform] = id;
+    const id = item.platformPostId || item.postId || item.zernioPostId || postId || null;
+    if (item.platform && item.platformPostId) ids[item.platform] = item.platformPostId;
+    if (item.platform && item.zernioPostId) ids[`${item.platform}Zernio`] = item.zernioPostId;
+    if (item.platform && !ids[item.platform] && id) ids[item.platform] = id;
     if (url && urls[item.platform] !== undefined) urls[item.platform] = url;
     const published = Boolean(url) || item.status === 'published';
     results.push({
@@ -246,8 +312,43 @@ export async function publishPropertyPost({ brokerId, propertyId, channels, capt
     },
   });
   return {
-    postId: post._id || null,
-    waLink: clickToWhatsAppLink(property.code),
+    postId,
+    waLink: naturalWaLink(property) || clickToWhatsAppLink(property.code),
     results,
   };
+}
+
+export async function findPropertyForPost(ids) {
+  const keys = [...new Set((ids || []).map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!keys.length) return null;
+  const publication = await prisma.publication.findFirst({
+    where: { postId: { in: keys } },
+    include: { property: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (publication?.property) return publication.property;
+  const rows = await prisma.property.findMany({
+    where: { isPublished: true },
+    orderBy: { updatedAt: 'desc' },
+    take: 200,
+  });
+  return rows.find((row) => {
+    const values = Object.values(row.publishedPostIds || {}).map(String);
+    return keys.some((key) => values.includes(key));
+  }) || null;
+}
+
+export function replyToComment({ postId, commentId, accountId, message }) {
+  return gateway(`/inbox/comments/${encodeURIComponent(postId)}`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': `comment-${commentId}`.slice(0, 200) },
+    body: { accountId, commentId, message },
+  });
+}
+
+export function sendPrivateReply({ postId, commentId, accountId, message }) {
+  return gateway(`/inbox/comments/${encodeURIComponent(postId)}/${encodeURIComponent(commentId)}/private-reply`, {
+    method: 'POST',
+    body: { accountId, message },
+  });
 }

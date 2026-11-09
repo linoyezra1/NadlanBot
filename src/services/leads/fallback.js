@@ -36,7 +36,7 @@ function answerQuestion(card, message) {
   }
   if (bits.length) return bits.join(' ');
   const summary = formatPublicSummary(card);
-  return `היי, אני כאן עם הנכס ${card.code}. ${summary}\nאפשר לשאול על מחיר, חדרים, מיקום או לבקש תמונות.`;
+  return `היי, אני כאן עם הדירה. ${summary}\nאפשר לשאול על מחיר, חדרים, מיקום או לבקש תמונות.`;
 }
 
 function mediaReply(item) {

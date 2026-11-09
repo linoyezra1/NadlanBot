@@ -2,10 +2,11 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { config } from '../config.js';
 import { brandIconUrl, connectedPage } from '../domain/connectedPage.js';
+import { privateCommentMessage, publicCommentReply } from '../domain/waLink.js';
 import { prisma } from '../db.js';
 import { text } from '../domain/replies.js';
 import { logger } from '../logger.js';
-import { readConnectSession } from '../services/socialPublisher.js';
+import { findPropertyForPost, readConnectSession, replyToComment, sendPrivateReply } from '../services/socialPublisher.js';
 import { deliver } from '../services/whatsapp.js';
 
 const router = express.Router();
@@ -94,6 +95,7 @@ function receive(req, res) {
       if (body.event === 'profile.connected' || body.event === 'account.connected' || body.event === 'account.disconnected') {
         return applyConnection(body);
       }
+      if (body.event === 'comment.received') return answerComment(body);
       return null;
     })
     .catch((error) => logger.error('social webhook failed', error));
@@ -101,6 +103,43 @@ function receive(req, res) {
 }
 
 const NETWORK_LABELS = { facebook: 'פייסבוק', instagram: 'אינסטגרם', tiktok: 'טיקטוק' };
+
+async function answerComment(body) {
+  const comment = body.comment || {};
+  if (comment.platform !== 'facebook') return;
+  if (comment.author?.isOwnAccount === true) return;
+  const commentId = String(comment.id || '');
+  const accountId = body.account?.accountId || body.account?.id;
+  const platformPostId = comment.platformPostId || comment.post?.platformPostId || '';
+  const zernioPostId = comment.postId || comment.post?.id || '';
+  if (!commentId || !accountId) return;
+  const property = await findPropertyForPost([platformPostId, zernioPostId]);
+  if (!property) {
+    logger.warn('facebook comment did not match a property', platformPostId || zernioPostId);
+    return;
+  }
+  const authorName = comment.author?.name || comment.author?.username || '';
+  const tasks = [];
+  const publicPostId = zernioPostId || platformPostId;
+  const privatePostId = platformPostId || zernioPostId;
+  if (publicPostId) {
+    tasks.push(replyToComment({
+      postId: publicPostId,
+      commentId,
+      accountId,
+      message: publicCommentReply(property, authorName),
+    }).catch((error) => logger.error('public comment reply failed', error.message)));
+  }
+  if (privatePostId) {
+    tasks.push(sendPrivateReply({
+      postId: privatePostId,
+      commentId,
+      accountId,
+      message: privateCommentMessage(property, authorName),
+    }).catch((error) => logger.error('private comment reply failed', error.message)));
+  }
+  await Promise.all(tasks);
+}
 
 router.get('/connect/:token', (req, res) => {
   const session = readConnectSession(req.params.token);

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import test from 'node:test';
-import { zernioApiRoot } from '../src/config.js';
+import { config, zernioApiRoot } from '../src/config.js';
 import { connectedPage } from '../src/domain/connectedPage.js';
 import { cloudinaryFolderName, signedCloudinaryParams } from '../src/services/storage.js';
 import { facebookSharerUrl, forwardCard, groupShareMessage } from '../src/domain/share.js';
 import { signaturesMatch } from '../src/routes/socialWebhook.js';
-import { selectPublicMedia } from '../src/services/socialPublisher.js';
+import { facebookPostExtras, selectPublicMedia, splitFeedMedia } from '../src/services/socialPublisher.js';
+import { publicCommentReply } from '../src/domain/waLink.js';
 
 test('keeps only public https media for the social gateway', () => {
   const items = selectPublicMedia([
@@ -18,6 +19,31 @@ test('keeps only public https media for the social gateway', () => {
     { url: 'https://cdn.example.com/a.jpg', type: 'image' },
     { url: 'https://cdn.example.com/a.mp4', type: 'video' },
   ]);
+  const feed = splitFeedMedia([
+    ...Array.from({ length: 11 }, (_, index) => ({ mediaType: 'image', cloudUrl: `https://cdn.example.com/${index}.jpg` })),
+    { mediaType: 'video', cloudUrl: 'https://cdn.example.com/tour.mp4' },
+    { mediaType: 'video', cloudUrl: 'https://cdn.example.com/tour.webm' },
+  ]);
+  assert.equal(feed.images.length, 10);
+  assert.deepEqual(feed.video, [{ url: 'https://cdn.example.com/tour.mp4', type: 'video' }]);
+  const saved = config.whatsappDisplayNumber;
+  config.whatsappDisplayNumber = '12762762210';
+  const property = { listingType: 'rent', address: 'כצנלסון 41', city: 'בת ים', price: 6500 };
+  const extras = facebookPostExtras(property, [
+    { url: 'https://cdn.example.com/1.jpg', type: 'image' },
+    { url: 'https://cdn.example.com/2.jpg', type: 'image' },
+  ]);
+  assert.equal(extras.facebookSettings.carouselCards.length, 2);
+  assert.match(extras.facebookSettings.carouselCards[0].link, /^https:\/\/wa\.me\/12762762210\?text=/);
+  assert.match(extras.firstComment, /wa\.me\/12762762210/);
+  const reply = publicCommentReply(property, 'דנה');
+  assert.match(reply, /היי דנה/);
+  assert.match(reply, /להשכרה/);
+  assert.match(reply, /כצנלסון/);
+  assert.match(reply, /בת ים/);
+  assert.match(decodeURIComponent(reply), /היי, הגבתי לפוסט על הדירה ברחוב כצנלסון בבת ים/);
+  assert.equal(reply.includes('APT-'), false);
+  config.whatsappDisplayNumber = saved;
 });
 
 test('checks the social gateway webhook signature', () => {

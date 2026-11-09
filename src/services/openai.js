@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { config } from '../config.js';
 import { ensureMarketingLink, fallbackMarketing } from '../domain/marketing.js';
-import { postWaMe } from '../domain/waLink.js';
+import { naturalWaLink, postWaMe } from '../domain/waLink.js';
 import { SYSTEM_PROMPT_POST_GENERATION } from './socialPublisher.js';
 import { highlightsFromTranscript } from '../domain/hotLead.js';
 import { logger } from '../logger.js';
@@ -31,7 +31,7 @@ function publicFields(fields) {
 }
 
 export async function generateMarketing(fields, waLink, broker) {
-  const link = waLink || postWaMe(fields?.code);
+  const link = waLink || naturalWaLink(fields) || postWaMe(fields?.code);
   const fallback = ensureMarketingLink(fallbackMarketing(fields, link, broker), link);
   if (!hasOpenAI()) return fallback;
   try {

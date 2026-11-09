@@ -1,6 +1,6 @@
 import { planPosts } from '../../domain/plan.js';
 import { forwardCard, groupShareMessage } from '../../domain/share.js';
-import { clickToWhatsAppLink, shortClickToWhatsAppLink } from '../../domain/waLink.js';
+import { clickToWhatsAppLink, naturalWaLink, shortClickToWhatsAppLink } from '../../domain/waLink.js';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
 import { brokerConnectUrl, publishPropertyPost } from '../socialPublisher.js';
@@ -110,7 +110,7 @@ async function recordPublications(propertyId, results, waLink, caption) {
 }
 
 async function distributeThroughGateway({ broker, property, channels, groups, caption }) {
-  const waLink = clickToWhatsAppLink(property.code);
+  const waLink = naturalWaLink(property) || clickToWhatsAppLink(property.code);
   let results = [];
   try {
     const published = await publishPropertyPost({
@@ -144,7 +144,7 @@ export async function distribute({ broker, property, channels, groups, caption }
 }
 
 async function distributeDirect({ broker, property, channels, groups, caption }) {
-  const waLink = clickToWhatsAppLink(property.code);
+  const waLink = naturalWaLink(property) || clickToWhatsAppLink(property.code);
   const accounts = await resolveAccounts(broker.id);
   const posts = planPosts({
     channels,

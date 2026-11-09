@@ -23,7 +23,7 @@ import {
   parsePublishCommand,
 } from '../../domain/intents.js';
 import { buttons, text } from '../../domain/replies.js';
-import { postWaMe } from '../../domain/waLink.js';
+import { naturalWaLink, postWaMe } from '../../domain/waLink.js';
 import { prisma } from '../../db.js';
 import { readFlow, rememberInbound, saveFlow } from '../conversationStore.js';
 import { extractFromUtterance } from '../extract.js';
@@ -152,7 +152,7 @@ async function loadProperty(propertyId) {
 }
 
 async function beginMarketing(conversation, flow) {
-  const waLink = postWaMe(flow.code);
+  const waLink = naturalWaLink(flow.fields) || postWaMe(flow.code);
   if (!waLink) {
     await saveFlow(conversation.id, { status: 'closed', flowStep: 'done', flow });
     return [text(`הנכס ${flow.code} שמור, אבל חסר TWILIO_WHATSAPP_NUMBER ולכן אי אפשר לבנות קישור wa.me. אחרי ההגדרה כתוב: פרסם ${flow.code}`)];

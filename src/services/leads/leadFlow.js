@@ -1,13 +1,13 @@
-import { toPublicCard } from '../../domain/card.js';
+import { toPublicCard, formatPublicSummary } from '../../domain/card.js';
 import { formatHotLead } from '../../domain/hotLead.js';
-import { extractPropertyCode, hotLeadSignal } from '../../domain/intents.js';
 import { text } from '../../domain/replies.js';
 import { image, video } from '../../domain/replies.js';
+import { hotLeadSignal } from '../../domain/intents.js';
 import { matchMedia } from '../../domain/tags.js';
 import { prisma } from '../../db.js';
 import { readFlow, recentMessages, rememberInbound, saveFlow } from '../conversationStore.js';
-import { findActiveProperty } from '../properties.js';
 import { completeLeadTurn, hasOpenAI, summarizeForBroker } from '../openai.js';
+import { chooseProperty, formatPropertyChoices, matchPropertyFromText } from '../propertyMatcher.js';
 import { fallbackLeadTurn } from './fallback.js';
 import { leadSystemPrompt, leadTools } from './prompt.js';
 
@@ -213,39 +213,98 @@ async function runTool(call, context) {
   return { data: { ok: false, error: 'Unknown tool' } };
 }
 
+function openingReplies(property) {
+  const card = toPublicCard(property);
+  const where = [property.address, property.city].filter(Boolean).join(', ');
+  const summary = formatPublicSummary(card);
+  const lines = [
+    where ? `הנה הדירה: ${where}` : 'הנה הדירה.',
+    summary,
+    'אפשר לשאול על המחיר, החדרים או המיקום, או לבקש תמונות נוספות.',
+  ].filter(Boolean);
+  const media = Array.isArray(property.media) ? property.media : [];
+  const photos = media.filter((item) => item.mediaType !== 'video' && item.cloudUrl).slice(0, 3);
+  const clips = photos.length ? photos : media.filter((item) => item.cloudUrl).slice(0, 1);
+  return [
+    text(lines.join('\n')),
+    ...clips.map((item) => (item.mediaType === 'video'
+      ? video(item.cloudUrl, item.caption || '')
+      : image(item.cloudUrl, item.caption || ''))),
+  ];
+}
+
+async function attachProperty(conversation, property) {
+  const flow = readFlow(conversation);
+  flow.pendingPropertyIds = [];
+  const saved = await saveFlow(conversation.id, { flow, propertyId: property.id });
+  if (property.brokerId && saved.brokerId !== property.brokerId) {
+    return prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { brokerId: property.brokerId },
+    });
+  }
+  return saved;
+}
+
+function clarify() {
+  return text('לא הצלחתי לאתר את הדירה המדויקת. באיזה עיר ורחוב מדובר, או מה מספר החדרים שמעניין אותך?');
+}
+
+async function rememberChoices(conversation, match) {
+  const flow = readFlow(conversation);
+  flow.pendingPropertyIds = match.properties.map((property) => property.id);
+  await saveFlow(conversation.id, { flow });
+  return {
+    replies: [text(formatPropertyChoices(match.properties, match.hints))],
+    notifications: [],
+    conversationId: conversation.id,
+  };
+}
+
 export async function handleLead(event) {
-  const code = extractPropertyCode(`${event.text || ''} ${event.media?.caption || ''}`);
+  const incoming = `${event.text || ''} ${event.media?.caption || ''}`.trim();
   let conversation = await openLead(event.from, event.name);
   await rememberInbound(conversation.id, event, 'lead');
 
-  if (code) {
-    const property = await findActiveProperty(code);
-    if (!property) {
+  if (!conversation.propertyId) {
+    const flow = readFlow(conversation);
+    if (flow.pendingPropertyIds.length) {
+      const options = await prisma.property.findMany({
+        where: { id: { in: flow.pendingPropertyIds }, status: 'active' },
+        include: { media: { orderBy: { createdAt: 'asc' } }, broker: true },
+      });
+      const ordered = flow.pendingPropertyIds
+        .map((id) => options.find((property) => property.id === id))
+        .filter(Boolean);
+      const chosen = chooseProperty(incoming, ordered);
+      if (chosen) {
+        conversation = await attachProperty(conversation, chosen);
+        return { replies: openingReplies(chosen), notifications: [], conversationId: conversation.id };
+      }
+    }
+    const match = await matchPropertyFromText(incoming);
+    if (match.kind === 'missing-code') {
       return {
-        replies: [text(`לא מצאתי נכס פעיל עם הקוד ${code}. כדאי לבדוק את המספר שמופיע במודעה.`)],
+        replies: [text(`לא מצאתי נכס פעיל עם הקוד ${match.hints.code}. כדאי לבדוק את המספר שמופיע במודעה.`)],
         notifications: [],
         conversationId: conversation.id,
       };
     }
-    conversation = await prisma.conversation.update({
-      where: { id: conversation.id },
-      data: { propertyId: property.id },
-    });
+    if (match.kind === 'one') {
+      conversation = await attachProperty(conversation, match.properties[0]);
+      return { replies: openingReplies(match.properties[0]), notifications: [], conversationId: conversation.id };
+    }
+    if (match.kind === 'many') return rememberChoices(conversation, match);
+    return { replies: [clarify()], notifications: [], conversationId: conversation.id };
   }
 
-  const property = conversation.propertyId
-    ? await prisma.property.findFirst({
-      where: { id: conversation.propertyId, status: 'active' },
-      include: { media: true, broker: true },
-    })
-    : null;
+  const property = await prisma.property.findFirst({
+    where: { id: conversation.propertyId, status: 'active' },
+    include: { media: true, broker: true },
+  });
 
   if (!property) {
-    return {
-      replies: [text('היי, כדי לפתוח את הנכס הנכון שלחו את קוד הדירה מהמודעה, למשל APT-104.')],
-      notifications: [],
-      conversationId: conversation.id,
-    };
+    return { replies: [clarify()], notifications: [], conversationId: conversation.id };
   }
 
   const card = toPublicCard(property);

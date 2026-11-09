@@ -16,6 +16,7 @@ export function readFlow(conversation) {
     mediaSends: Number(data.mediaSends || 0),
     leadName: data.leadName || conversation?.contactName || null,
     preferredTime: data.preferredTime || null,
+    pendingPropertyIds: Array.isArray(data.pendingPropertyIds) ? data.pendingPropertyIds : [],
   };
 }
 
@@ -31,6 +32,7 @@ export function packFlow(flow) {
     mediaSends: flow.mediaSends || 0,
     leadName: flow.leadName || null,
     preferredTime: flow.preferredTime || null,
+    pendingPropertyIds: Array.isArray(flow.pendingPropertyIds) ? flow.pendingPropertyIds : [],
   };
 }
 
