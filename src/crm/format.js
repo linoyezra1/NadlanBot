@@ -45,7 +45,7 @@ const LEAD_STATUS = {
 
 const PROPERTY_STATUS = {
   active: ['פעיל', 'open'],
-  draft: ['יוה', 'muted'],
+  draft: ['וה', 'muted'],
   archived: ['בארכיון', 'muted'],
 };
 
