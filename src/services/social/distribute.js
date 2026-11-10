@@ -1,4 +1,5 @@
 import { planPosts } from '../../domain/plan.js';
+import { TIKTOK_CRM_NOTICE, TIKTOK_WA_LINE } from '../../domain/tiktokVideo.js';
 import { forwardCard, groupShareMessage } from '../../domain/share.js';
 import { clickToWhatsAppLink, naturalWaLink, shortClickToWhatsAppLink } from '../../domain/waLink.js';
 import { config } from '../../config.js';
@@ -17,14 +18,17 @@ function label(result) {
   return result.platform;
 }
 
+function resultLine(result) {
+  if (result.code === 'NO_VIDEO') return TIKTOK_WA_LINE;
+  const ok = result.status === 'published' || result.status === 'processing';
+  const detail = result.error || result.postUrl || (result.status === 'processing' ? 'הסרטון התקבל וממתין לעיבוד' : '');
+  return `${label(result)}: ${ok ? 'עלה' : 'לא פורסם'}${detail ? ` — ${detail}` : ''}`;
+}
+
 export function summarizeResults(results, waLink) {
   const lines = ['סיימתי לטפל בפרסום.'];
   lines.push(waLink ? `קישור הלידים:\n${waLink}` : 'חסר TWILIO_WHATSAPP_NUMBER, ולכן אין עדיין קישור wa.me.');
-  for (const result of results) {
-    const ok = result.status === 'published' || result.status === 'processing';
-    const detail = result.error || result.postUrl || (result.status === 'processing' ? 'הסרטון התקבל וממתין לעיבוד' : '');
-    lines.push(`${label(result)}: ${ok ? 'עלה' : 'לא פורסם'}${detail ? ` — ${detail}` : ''}`);
-  }
+  for (const result of results) lines.push(resultLine(result));
   if (results.some((result) => result.platform === 'tiktok' && result.status === 'processing')) {
     lines.push('בטיקטוק הסרטון עולה לפי הרשאת האפליקציה. לפני אישור האפליקציה ברירת המחדל היא פרסום פרטי.');
   }
@@ -85,9 +89,7 @@ function gatewayMessages(results, property) {
   if (results.some((item) => item.platform === 'tiktok' && (item.status === 'published' || item.status === 'processing'))) also.push('טיקטוק');
   if (also.length) messages.push(`גם ${also.join(' ו')} עלו מהחשבון שלך.`);
   const failed = results.filter((item) => item.status === 'failed' || item.status === 'skipped');
-  if (failed.length) {
-    messages.push(failed.map((item) => `${label(item)}: ${item.error || 'לא פורסם'}`).join('\n'));
-  }
+  if (failed.length) messages.push(failed.map(resultLine).join('\n'));
   return messages;
 }
 
@@ -135,6 +137,15 @@ async function distributeThroughGateway({ broker, property, channels, groups, ca
     summary: summarizeResults(results, waLink),
     messages: gatewayMessages(results, property),
   };
+}
+
+export function crmPublishNotice(outcome) {
+  const results = outcome?.results || [];
+  const missingVideo = results.some((item) => item.code === 'NO_VIDEO');
+  if (!missingVideo) return outcome?.summary || '';
+  const others = results.filter((item) => item.platform !== 'tiktok');
+  if (!others.length) return TIKTOK_CRM_NOTICE;
+  return `${summarizeResults(others, outcome.waLink)}\n${TIKTOK_CRM_NOTICE}`;
 }
 
 export async function publishPropertyChannel(broker, property, platform) {

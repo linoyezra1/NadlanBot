@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { leadsPage, propertiesPage, propertyPage } from '../src/crm/render.js';
+import { TIKTOK_CRM_NOTICE } from '../src/domain/tiktokVideo.js';
 import { publishOnce } from '../src/crm/publishLock.js';
 
 test('a second publish waits for the first instead of starting another', async () => {
@@ -35,13 +36,15 @@ test('publish buttons lock themselves while the request is running', () => {
     publications: [],
     conversations: [],
     amenities: {},
-  }, '', '/b/broker-1', 'בדיקה');
+  }, TIKTOK_CRM_NOTICE, '/b/broker-1', 'בדיקה');
   assert.match(html, /פרסם בפייסבוק/);
   assert.match(html, /פרסם באינסטגרם/);
   assert.match(html, /פרסם בטיקטוק/);
   assert.match(html, /dataset\.busy/);
   assert.match(html, /מפרסם\.\.\./);
   assert.match(html, /button\.disabled = true/);
+  assert.match(html, /role="alert"/);
+  assert.match(html, /פרסום לטיקטוק נכשל/);
   assert.match(html, /דשבורד/);
   assert.match(html, /נכסים/);
   assert.match(html, /לידים/);

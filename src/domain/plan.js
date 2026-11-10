@@ -1,4 +1,5 @@
 import { isPublicHttpUrl } from './channels.js';
+import { tiktokVideoSkip, tiktokVideoUrl } from './tiktokVideo.js';
 
 function skipped(platform, targetName, error) {
   return {
@@ -70,14 +71,13 @@ export function planPosts({ channels, groups = [], media = [], connected = {} })
   }
 
   if (selected.has('tiktok')) {
+    const videoUrl = tiktokVideoUrl(media);
     if (!connected.tiktok) {
       posts.push(skipped('tiktok', 'טיקטוק', 'חשבון הטיקטוק עדיין לא מחובר.'));
-    } else if (!videos.length) {
-      posts.push(skipped('tiktok', 'טיקטוק', 'לטיקטוק נדרש סרטון. הערוץ דולג.'));
-    } else if (!publicVideos.length) {
-      posts.push(skipped('tiktok', 'טיקטוק', 'הסרטון לא זמין בכתובת https ציבורית.'));
+    } else if (!videoUrl) {
+      posts.push(tiktokVideoSkip());
     } else {
-      posts.push(ready('tiktok', 'video', { urls: [publicVideos[0].cloudUrl], targetName: 'טיקטוק' }));
+      posts.push(ready('tiktok', 'video', { urls: [videoUrl], targetName: 'טיקטוק' }));
     }
   }
 

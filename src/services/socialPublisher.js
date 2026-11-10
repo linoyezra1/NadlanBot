@@ -1,4 +1,5 @@
 import { isPublicHttpUrl } from '../domain/channels.js';
+import { tiktokVideoSkip, tiktokVideoUrl } from '../domain/tiktokVideo.js';
 import { clickToWhatsAppLink, naturalWaLink, postWaMe, streetLabel } from '../domain/waLink.js';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
@@ -35,8 +36,8 @@ export function selectPublicMedia(media) {
 export function splitFeedMedia(media) {
   const items = selectPublicMedia(media);
   const images = items.filter((item) => item.type === 'image').slice(0, 10);
-  const video = items.find((item) => item.type === 'video' && /\.(mp4|mov)(\?|$)/i.test(item.url || ''));
-  return { images, video: video ? [video] : [] };
+  const url = tiktokVideoUrl(media);
+  return { images, video: url ? [{ url, type: 'video' }] : [] };
 }
 
 export function facebookPostExtras(property, images = []) {
@@ -226,13 +227,22 @@ export async function publishPropertyPost({ brokerId, propertyId, channels, capt
   const skipped = [];
   for (const account of accounts) {
     if (account.platform === 'tiktok' && !hasVideo) {
-      skipped.push({ platform: 'tiktok', status: 'skipped', error: 'טיקטוק דורש סרטון MP4 או MOV בכתובת https ציבורית' });
+      skipped.push(tiktokVideoSkip());
       continue;
     }
     const id = accountId(account);
     if (id) platforms.push({ platform: account.platform, accountId: id });
   }
   if (!platforms.length) {
+    const skippedPlatforms = new Set(skipped.map((item) => item.platform));
+    const missingAccount = [...wanted].filter((name) => !skippedPlatforms.has(name));
+    if (skipped.length && !missingAccount.length) {
+      return {
+        postId: null,
+        waLink: naturalWaLink(property) || clickToWhatsAppLink(property.code),
+        results: skipped,
+      };
+    }
     const error = new Error(skipped[0]?.error || 'אין חשבון מחובר לערוצים שנבחרו');
     error.code = 'NO_ACCOUNTS';
     throw error;
@@ -247,14 +257,15 @@ export async function publishPropertyPost({ brokerId, propertyId, channels, capt
     const withPhotos = withFacebookExtras([...facebook, ...instagram], property, images);
     if (withPhotos.length) requests.push({ mediaItems: images, platforms: withPhotos });
     if (tiktok.length && hasVideo) requests.push({ mediaItems: video, platforms: tiktok });
-    else if (tiktok.length) skipped.push({ platform: 'tiktok', status: 'skipped', error: 'טיקטוק דורש סרטון MP4 או MOV בכתובת https ציבורית' });
+    else if (tiktok.length) skipped.push(tiktokVideoSkip());
   } else if (hasVideo) {
     requests.push({ mediaItems: video, platforms: withFacebookExtras(platforms, property, []) });
   } else if (facebook.length) {
     requests.push({ mediaItems: [], platforms: withFacebookExtras(facebook, property, []) });
-    for (const item of [...instagram, ...tiktok]) {
+    for (const item of instagram) {
       skipped.push({ platform: item.platform, status: 'skipped', error: 'אין תמונה או סרטון ציבורי לפרסום' });
     }
+    if (tiktok.length) skipped.push(tiktokVideoSkip());
   } else {
     const error = new Error('אין תמונה או סרטון ציבורי לפרסום');
     error.code = 'NO_MEDIA';

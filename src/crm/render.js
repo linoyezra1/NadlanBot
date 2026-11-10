@@ -240,7 +240,7 @@ export function propertyPage(token, property, notice = '', base = '', subtitle =
     </header>
     <div class="split">
       <div>
-        <section class="block"><h2>תמונות וסרטונים</h2>${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}${gallery}${upload}</section>
+        <section class="block"><h2>תמונות וסרטונים</h2>${notice ? `<div class="alert${notice.includes('פרסום לטיקטוק נכשל') ? ' toast' : ''}" role="alert">${escapeHtml(notice)}</div>` : ''}${gallery}${upload}</section>
         <section class="block"><h2>לקוחות שפנו על הנכס</h2>${leads}</section>
       </div>
       <div>

@@ -6,7 +6,7 @@ import { parseMetaWebhook } from '../src/services/metaWebhook.js';
 import { idsFromDebug } from '../src/services/whatsappConnect.js';
 import { isBotPaused } from '../src/services/whatsappMode.js';
 import { createApp } from '../src/app.js';
-import { mobileOAuthUrl } from '../src/domain/whatsappOAuth.js';
+import { mobileOAuthUrl, oauthRedirectParam } from '../src/domain/whatsappOAuth.js';
 import { deletionStatus, parseSignedRequest, rememberDeletion } from '../src/services/facebookSignedRequest.js';
 import { signaturesMatch } from '../src/routes/whatsappConnect.js';
 
@@ -105,6 +105,10 @@ test('mobile login is a full-page OAuth redirect', () => {
   assert.equal(url.searchParams.get('override_default_response_type'), 'true');
   const extras = JSON.parse(url.searchParams.get('extras'));
   assert.equal(extras.featureType, 'whatsapp_business_app_onboarding');
+  assert.equal(oauthRedirectParam(''), '');
+  assert.equal(oauthRedirectParam('https://nadlanbot.up.railway.app/connect', 'https://nadlanbot.up.railway.app'), 'https://nadlanbot.up.railway.app/connect');
+  assert.equal(oauthRedirectParam('https://nadlanbot.up.railway.app/connect?brokerId=1', 'https://nadlanbot.up.railway.app'), null);
+  assert.equal(oauthRedirectParam('https://evil.example/connect', 'https://nadlanbot.up.railway.app'), null);
 });
 
 test('facebook removal addresses answer', async () => {
@@ -118,6 +122,10 @@ test('facebook removal addresses answer', async () => {
     assert.match(body, /מחיקת נתונים/);
     const removed = await fetch(`http://127.0.0.1:${port}/api/auth/facebook/deauthorize`);
     assert.equal(removed.status, 200);
+    const connect = await fetch(`http://127.0.0.1:${port}/connect`);
+    const page = await connect.text();
+    assert.match(page, /finishConnect\(response\.authResponse\.code, ''\)/);
+    assert.match(page, /finishConnect\(returned\.get\('code'\), pageUri\)/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

@@ -7,7 +7,7 @@ import { brokerFormPage, calendarPage, connectPage, dashboardPage, leadPage, lea
 import { openBroker } from '../services/brokers.js';
 import { addPropertyFiles, createPropertyFromDraft, officeFields } from '../services/properties.js';
 import { gatewayConfigured, platformAuthUrl } from '../services/socialPublisher.js';
-import { publishPropertyChannel } from '../services/social/distribute.js';
+import { crmPublishNotice, publishPropertyChannel } from '../services/social/distribute.js';
 import { publishOnce } from '../crm/publishLock.js';
 
 const router = express.Router();
@@ -171,7 +171,7 @@ router.post('/b/:brokerId/properties/:code/publish', wrap(async (req, res) => {
   let notice = '';
   try {
     const outcome = await publishOnce(key, () => publishPropertyChannel(broker, property, platform));
-    notice = outcome.summary || `הפרסום ל${names[platform]} הסתיים.`;
+    notice = crmPublishNotice(outcome) || `הפרסום ל${names[platform]} הסתיים.`;
   } catch (error) {
     logger.error('publish failed', req.params.code, platform, error.message);
     notice = error.message || `הפרסום ל${names[platform]} נכשל.`;

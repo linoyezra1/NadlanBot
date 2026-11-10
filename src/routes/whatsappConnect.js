@@ -200,6 +200,7 @@ function connectPage({ appId, configId, brokerId, version, ready }) {
   const buildOAuthUrl = ${oauthFn};
   const brokerKey = 'nadlanbot.whatsappBroker';
   const returned = new URLSearchParams(window.location.search);
+  const pageUri = window.location.origin + window.location.pathname;
   function rememberBroker(id) {
     if (!id) return;
     try { sessionStorage.setItem(brokerKey, id); } catch (error) {}
@@ -213,7 +214,7 @@ function connectPage({ appId, configId, brokerId, version, ready }) {
   function currentBrokerId() {
     return setup.brokerId || storedBroker() || returned.get('state') || '';
   }
-  function finishConnect(code) {
+  function finishConnect(code, redirectUri) {
     const status = document.getElementById('status');
     const brokerId = currentBrokerId();
     if (!brokerId) {
@@ -227,7 +228,7 @@ function connectPage({ appId, configId, brokerId, version, ready }) {
       body: JSON.stringify({
         code: code,
         brokerId: brokerId,
-        redirectUri: window.location.origin + window.location.pathname,
+        redirectUri: redirectUri,
         wabaId: sessionInfo.waba_id || '',
         phoneNumberId: sessionInfo.phone_number_id || ''
       })
@@ -250,7 +251,7 @@ function connectPage({ appId, configId, brokerId, version, ready }) {
   if (returned.get('error')) {
     document.getElementById('status').textContent = 'החיבור בוטל.';
   } else if (returned.get('code')) {
-    finishConnect(returned.get('code'));
+    finishConnect(returned.get('code'), pageUri);
   }
   window.addEventListener('message', (event) => {
     if (!String(event.origin || '').endsWith('facebook.com')) return;
@@ -278,7 +279,7 @@ function connectPage({ appId, configId, brokerId, version, ready }) {
         appId: setup.appId,
         version: setup.version,
         configId: setup.configId,
-        redirectUri: window.location.origin + window.location.pathname,
+        redirectUri: pageUri,
         brokerId: currentBrokerId()
       }));
       return;
@@ -288,7 +289,7 @@ function connectPage({ appId, configId, brokerId, version, ready }) {
         status.textContent = 'החיבור בוטל.';
         return;
       }
-      finishConnect(response.authResponse.code);
+      finishConnect(response.authResponse.code, '');
     }, {
       config_id: setup.configId,
       response_type: 'code',

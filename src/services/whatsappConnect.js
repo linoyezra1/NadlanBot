@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { oauthRedirectParam } from '../domain/whatsappOAuth.js';
 import { logger } from '../logger.js';
 import { prisma } from '../db.js';
 
@@ -39,12 +40,16 @@ export function idsFromDebug(debug) {
 
 export async function exchangeEmbeddedCode(code, redirectUri = '') {
   if (!config.metaAppId || !config.metaAppSecret) throw fail('חיבור Meta עדיין לא מוגדר בשרת', 503);
+  const allowedOrigin = config.publicBaseUrl ? new URL(config.publicBaseUrl).origin : '';
+  const redirect = oauthRedirectParam(redirectUri, allowedOrigin);
+  if (redirect == null) throw fail('כתובת החזרה לא תקינה');
   const params = new URLSearchParams({
     client_id: config.metaAppId,
     client_secret: config.metaAppSecret,
     code: String(code),
   });
-  if (redirectUri) params.set('redirect_uri', redirectUri);
+  params.set('redirect_uri', redirect);
+  logger.info('whatsapp token exchange', redirect ? 'redirect' : 'sdk');
   return graph(`oauth/access_token?${params.toString()}`);
 }
 
