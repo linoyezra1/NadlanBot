@@ -404,15 +404,18 @@ export function connectPage(token, broker, notice = '') {
     if (notice) return `<span class="primary">${text}</span>`;
     return `<a class="primary" href="${href(token, `${base}/connect/${id}`)}">${text}</a>`;
   }).join('');
+  const whatsapp = broker.isWhatsAppConnected
+    ? '<span class="primary">וואטסאפ עסקי · מחובר</span>'
+    : `<a class="primary" href="/connect?brokerId=${encodeURIComponent(broker.id)}">חבר את ה-WhatsApp העסקי שלך ל-NadlanBot</a>`;
   return page(token, 'חיבור חשבונות', 'connect', `
     <header class="page-head">
       <div>
         <h1>חיבור חשבונות</h1>
-        <p>כל כפתור פותח את החיבור של הרשת שלו: פייסבוק, אינסטגרם או טיקטוק.</p>
+        <p>כל כפתור פותח את החיבור של הרשת שלו: פייסבוק, אינסטגרם או טיקטוק. וואטסאפ עסקי נשאר פעיל גם בנייד.</p>
       </div>
     </header>
     ${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}
-    <section class="panel"><div class="connect-list">${buttons}</div></section>`, base, broker.fullName);
+    <section class="panel"><div class="connect-list">${buttons}${whatsapp}</div></section>`, base, broker.fullName);
 }
 
 export function missingPage(token, active, title, text) {

@@ -8,6 +8,7 @@ import adminRouter from './routes/admin.js';
 import crmRouter from './routes/crm.js';
 import socialWebhookRouter from './routes/socialWebhook.js';
 import webhookRouter from './routes/webhook.js';
+import whatsappConnectRouter from './routes/whatsappConnect.js';
 
 export function createApp() {
   const app = express();
@@ -16,6 +17,7 @@ export function createApp() {
   app.use('/webhook', webhookRouter);
   app.use('/social-webhook', socialWebhookRouter);
   app.use('/social', socialWebhookRouter);
+  app.use(whatsappConnectRouter);
   app.use(express.json({ limit: '1mb' }));
   app.use('/media', express.static(uploadsDir(), { index: false, fallthrough: false }));
   app.use(express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), '../public')));

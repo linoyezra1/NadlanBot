@@ -7,6 +7,11 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum WhatsAppMode {
+  SYSTEM_BOT
+  DIRECT_COEXISTENCE
+}
+
 /// Authorized broker. Identified by phone number.
 model Broker {
   id           String   @id @default(cuid())
@@ -18,6 +23,11 @@ model Broker {
   socialProfileId   String?  @unique
   socialConnected   Boolean  @default(false)
   connectedNetworks String[] @default([])
+  whatsappMode        WhatsAppMode @default(SYSTEM_BOT)
+  wabaId              String?
+  whatsappNumberId    String?      @unique
+  whatsappAccessToken String?
+  isWhatsAppConnected Boolean      @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -108,6 +118,8 @@ model Conversation {
   flowStep    String    @default("idle")
   flowData    Json?
   summary     String?
+  whatsappChannel String?
+  botPausedUntil  DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

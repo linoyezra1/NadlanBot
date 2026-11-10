@@ -40,6 +40,7 @@ async function claimEvent(messageId) {
 }
 
 async function dispatch(event) {
+  if (event.channel === 'meta') return handleLead(event);
   const broker = await prisma.broker.findUnique({ where: { phoneNumber: event.from } });
   if (broker) return handleBroker(broker, event);
   return handleLead(event);

@@ -8,12 +8,25 @@ import { prisma } from '../../db.js';
 import { readFlow, recentMessages, rememberInbound, saveFlow } from '../conversationStore.js';
 import { completeLeadTurn, hasOpenAI, summarizeForBroker } from '../openai.js';
 import { chooseProperty, formatPropertyChoices, matchPropertyFromText } from '../propertyMatcher.js';
+import { isBotPaused } from '../whatsappMode.js';
 import { fallbackLeadTurn } from './fallback.js';
 import { leadSystemPrompt, leadTools } from './prompt.js';
 
-async function openLead(phone, name) {
+export function leadLookup(phone, brokerId = null) {
+  return {
+    leadPhone: phone,
+    role: 'lead',
+    status: { not: 'closed' },
+    ...(brokerId
+      ? { brokerId, whatsappChannel: 'meta' }
+      : { OR: [{ whatsappChannel: null }, { whatsappChannel: { not: 'meta' } }] }),
+  };
+}
+
+async function openLead(phone, name, brokerId = null) {
+  const where = leadLookup(phone, brokerId);
   const existing = await prisma.conversation.findFirst({
-    where: { leadPhone: phone, role: 'lead', status: { not: 'closed' } },
+    where,
     orderBy: { updatedAt: 'desc' },
   });
   if (existing) return existing;
@@ -21,6 +34,8 @@ async function openLead(phone, name) {
     data: {
       role: 'lead',
       leadPhone: phone,
+      brokerId: brokerId || null,
+      whatsappChannel: brokerId ? 'meta' : null,
       contactName: name || null,
       status: 'active',
       flowStep: 'chat',
@@ -263,8 +278,11 @@ async function rememberChoices(conversation, match) {
 
 export async function handleLead(event) {
   const incoming = `${event.text || ''} ${event.media?.caption || ''}`.trim();
-  let conversation = await openLead(event.from, event.name);
+  let conversation = await openLead(event.from, event.name, event.brokerId || null);
   await rememberInbound(conversation.id, event, 'lead');
+  if (isBotPaused(conversation)) {
+    return { replies: [], notifications: [], conversationId: conversation.id };
+  }
 
   if (!conversation.propertyId) {
     const flow = readFlow(conversation);
@@ -282,7 +300,7 @@ export async function handleLead(event) {
         return { replies: openingReplies(chosen), notifications: [], conversationId: conversation.id };
       }
     }
-    const match = await matchPropertyFromText(incoming);
+    const match = await matchPropertyFromText(incoming, event.brokerId || null);
     if (match.kind === 'missing-code') {
       return {
         replies: [text(`לא מצאתי נכס פעיל עם הקוד ${match.hints.code}. כדאי לבדוק את המספר שמופיע במודעה.`)],

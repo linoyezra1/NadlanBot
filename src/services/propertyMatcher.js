@@ -88,11 +88,12 @@ const propertyInclude = {
   broker: true,
 };
 
-export async function matchPropertyFromText(messageText) {
+export async function matchPropertyFromText(messageText, brokerId = null) {
   const hints = extractPropertyHints(messageText);
+  const scope = brokerId ? { brokerId } : {};
   if (hints.code) {
     const property = await prisma.property.findFirst({
-      where: { code: hints.code, status: 'active' },
+      where: { code: hints.code, status: 'active', ...scope },
       include: propertyInclude,
     });
     return { kind: property ? 'one' : 'missing-code', hints, properties: property ? [property] : [] };
@@ -100,7 +101,7 @@ export async function matchPropertyFromText(messageText) {
   if (!hints.city && !hints.street && hints.rooms == null) {
     return { kind: 'none', hints, properties: [] };
   }
-  const where = { status: 'active' };
+  const where = { status: 'active', ...scope };
   if (hints.listingType) where.listingType = hints.listingType;
   if (hints.city) where.city = { contains: hints.city, mode: 'insensitive' };
   let rows = await prisma.property.findMany({
