@@ -6,7 +6,7 @@ import { connectedPage } from '../src/domain/connectedPage.js';
 import { cloudinaryFolderName, signedCloudinaryParams } from '../src/services/storage.js';
 import { facebookSharerUrl, forwardCard, groupShareMessage } from '../src/domain/share.js';
 import { acceptsWebhook, signaturesMatch } from '../src/routes/socialWebhook.js';
-import { commentReplyPlan, commentWebhookEvents, facebookPostExtras, selectPublicMedia, splitFeedMedia } from '../src/services/socialPublisher.js';
+import { commentReplyPlan, commentWebhookEvents, commentWebhookUpdate, facebookPostExtras, selectPublicMedia, splitFeedMedia } from '../src/services/socialPublisher.js';
 import { publicCommentReply } from '../src/domain/waLink.js';
 
 test('keeps only public https media for the social gateway', () => {
@@ -134,6 +134,12 @@ test('subscribes only to comment and account events Zernio accepts', () => {
   assert.equal(events.includes('profile.connected'), false);
   assert.equal(events.includes('mention.received'), false);
   assert.equal(events.includes('post.platform.published'), false);
+  const idle = commentWebhookUpdate({ id: 'hook-1', isActive: true, events }, '');
+  assert.equal(idle, null);
+  const synced = commentWebhookUpdate({ id: 'hook-1', isActive: true, events }, 'secret');
+  assert.equal(synced.webhookId, 'hook-1');
+  assert.equal(synced.secret, 'secret');
+  assert.equal(synced.isActive, true);
 });
 
 test('plans a public and a private reply for Instagram and Facebook comments', () => {

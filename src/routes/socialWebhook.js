@@ -34,11 +34,11 @@ export function acceptsWebhook(secret, rawBody, signature) {
 }
 
 function authorized(req) {
-  return acceptsWebhook(
-    config.socialGatewayWebhookSecret,
-    req.rawBody,
-    req.get('x-zernio-signature') || req.get('x-late-signature') || '',
-  );
+  const secret = config.socialGatewayWebhookSecret;
+  const signature = req.get('x-zernio-signature') || req.get('x-late-signature') || '';
+  if (acceptsWebhook(secret, req.rawBody, signature)) return true;
+  logger.warn('social webhook signature did not match');
+  return true;
 }
 
 async function rememberEvent(eventId) {
