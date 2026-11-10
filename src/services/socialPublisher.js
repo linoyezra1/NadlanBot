@@ -374,21 +374,23 @@ const COMMENT_PLATFORMS = new Set(['facebook', 'instagram', 'tiktok']);
 
 export function commentReplyPlan(body) {
   const comment = body?.comment || {};
-  if (!COMMENT_PLATFORMS.has(comment.platform)) return null;
+  const platform = String(comment.platform || body?.platform || '').toLowerCase();
+  if (!COMMENT_PLATFORMS.has(platform)) return null;
   if (comment.author?.isOwnAccount === true) return null;
   const commentId = String(comment.id || '');
-  const accountId = body.account?.accountId || body.account?.id || '';
+  const accountId = String(body.account?.accountId || body.account?.id || body.accountId || comment.accountId || '');
   if (!commentId || !accountId) return null;
   const platformPostId = String(comment.platformPostId || comment.post?.platformPostId || '');
   const zernioPostId = String(comment.postId || comment.post?.id || '');
   return {
-    platform: comment.platform,
+    platform,
     commentId,
+    text: String(comment.text || comment.message || '').trim(),
     accountId,
     authorName: comment.author?.name || comment.author?.username || '',
     lookupIds: [platformPostId, zernioPostId].filter(Boolean),
     publicPostId: zernioPostId || platformPostId,
-    privatePostId: comment.platform === 'tiktok' ? '' : (platformPostId || zernioPostId),
+    privatePostId: platform === 'tiktok' ? '' : (platformPostId || zernioPostId),
   };
 }
 

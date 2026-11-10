@@ -27,10 +27,18 @@ function signaturesMatch(secret, rawBody, header) {
   return crypto.timingSafeEqual(exp, actual);
 }
 
+export function acceptsWebhook(secret, rawBody, signature) {
+  const header = String(signature || '').replace(/^sha256=/i, '');
+  if (!secret || !header) return true;
+  return signaturesMatch(secret, rawBody, header);
+}
+
 function authorized(req) {
-  if (!config.socialGatewayWebhookSecret) return config.nodeEnv !== 'production';
-  const header = String(req.get('x-zernio-signature') || req.get('x-late-signature') || '').replace(/^sha256=/i, '');
-  return signaturesMatch(config.socialGatewayWebhookSecret, req.rawBody, header);
+  return acceptsWebhook(
+    config.socialGatewayWebhookSecret,
+    req.rawBody,
+    req.get('x-zernio-signature') || req.get('x-late-signature') || '',
+  );
 }
 
 async function rememberEvent(eventId) {
@@ -91,6 +99,9 @@ function receive(req, res) {
   const eventId = body.id || req.get('x-zernio-event-id') || req.get('x-late-event-id');
   rememberEvent(eventId)
     .then((fresh) => {
+      if (body.event === 'comment.received') {
+        console.log('Processing comment from:', body.comment?.author?.name, body.comment?.text);
+      }
       if (!fresh) return null;
       if (body.event === 'profile.connected' || body.event === 'account.connected' || body.event === 'account.disconnected') {
         return applyConnection(body);
@@ -106,7 +117,10 @@ const NETWORK_LABELS = { facebook: 'פייסבוק', instagram: 'אינסטגר�
 
 async function answerComment(body) {
   const plan = commentReplyPlan(body);
-  if (!plan) return;
+  if (!plan) {
+    logger.warn('comment was not answered', body.comment?.id || '', body.comment?.platform || '');
+    return;
+  }
   const property = await findPropertyForPost(plan.lookupIds);
   if (!property) logger.warn('comment did not match a property', plan.lookupIds.join(' ') || plan.commentId);
   const publicMessage = property

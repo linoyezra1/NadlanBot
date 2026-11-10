@@ -233,6 +233,25 @@ button.primary:disabled, .primary:disabled { opacity: 0.55; cursor: progress; tr
 .alert, .upload-status { background: color-mix(in oklch, var(--destructive) 10%, white); color: var(--destructive); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 16px; white-space: pre-wrap; }
 .upload-status[hidden] { display: none; }
 .alert.toast { position: sticky; top: 12px; z-index: 6; }
+.publish-popup {
+  border: 0;
+  border-radius: 1rem;
+  padding: 28px 24px;
+  width: min(22rem, calc(100% - 32px));
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+.publish-popup::backdrop { background: oklch(0.2 0.02 260 / 0.45); }
+.publish-popup h2 { margin: 0 0 16px; font-size: 24px; }
+.publish-popup .primary, .publish-popup button { margin-top: 8px; }
+.publish-popup form { margin-top: 12px; }
+.publish-popup form button {
+  background: transparent;
+  border: 0;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  font-weight: 700;
+}
 .alert p { margin: 0 0 4px; }
 form.sheet { display: grid; gap: 14px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

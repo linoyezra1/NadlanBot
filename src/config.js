@@ -50,7 +50,7 @@ export const config = {
   tiktokPrivacyLevel: text('TIKTOK_PRIVACY_LEVEL', 'SELF_ONLY'),
   socialGatewayApiKey: text('ZERNIO_API_KEY') || text('SOCIAL_GATEWAY_API_KEY'),
   socialGatewayBaseUrl: zernioApiRoot(text('ZERNIO_BASE_URL') || text('SOCIAL_GATEWAY_BASE_URL', 'https://api.zernio.com')),
-  socialGatewayWebhookSecret: text('SOCIAL_GATEWAY_WEBHOOK_SECRET'),
+  socialGatewayWebhookSecret: text('ZERNIO_WEBHOOK_SECRET') || text('SOCIAL_GATEWAY_WEBHOOK_SECRET'),
   brokerTemplateName: text('WHATSAPP_BROKER_TEMPLATE_NAME'),
   brokerTemplateLang: text('WHATSAPP_BROKER_TEMPLATE_LANG', 'he'),
   autoSeed: text('AUTO_SEED') === 'true',

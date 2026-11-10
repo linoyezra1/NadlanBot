@@ -231,7 +231,35 @@ function publishButtons(token, base, code) {
   ${endScript}`;
 }
 
-export function propertyPage(token, property, notice = '', base = '', subtitle = 'האזור שלך') {
+function httpsUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    if (url.protocol !== 'https:') return '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function publishPopup(popup) {
+  if (popup?.platform !== 'tiktok') return '';
+  const url = httpsUrl(popup.url);
+  const link = url
+    ? `<a class="primary" href="${escapeHtml(url)}" target="_blank" rel="noopener">לצפייה בסרטון בטיקטוק</a>`
+    : '';
+  const endScript = '<' + '/script>';
+  return `<dialog class="publish-popup" open>
+    <h2>הסרטון עלה לטיקטוק בהצלחה</h2>
+    ${link}
+    <form method="dialog"><button type="submit">סגירה</button></form>
+  </dialog>
+  <script>
+    const publishPopup = document.querySelector('.publish-popup');
+    publishPopup?.addEventListener('click', (event) => { if (event.target === publishPopup) publishPopup.close(); });
+  ${endScript}`;
+}
+
+export function propertyPage(token, property, notice = '', base = '', subtitle = 'האזור שלך', popup = null) {
   const [statusLabel, tone] = propertyStatus(property.status);
   const bits = [
     ['סוג', property.listingType === 'rent' ? 'להשכרה' : property.listingType === 'sale' ? 'למכירה' : null],
@@ -275,7 +303,7 @@ export function propertyPage(token, property, notice = '', base = '', subtitle =
     </header>
     <div class="split">
       <div>
-        <section class="block"><h2>תמונות וסרטונים</h2>${notice ? `<div class="alert${notice.includes('פרסום לטיקטוק נכשל') ? ' toast' : ''}" role="alert">${escapeHtml(notice)}</div>` : ''}${gallery}${upload}</section>
+        <section class="block"><h2>תמונות וסרטונים</h2>${publishPopup(popup)}${notice && !popup ? `<div class="alert${notice.includes('פרסום לטיקטוק נכשל') ? ' toast' : ''}" role="alert">${escapeHtml(notice)}</div>` : ''}${gallery}${upload}</section>
         <section class="block"><h2>לקוחות שפנו על הנכס</h2>${leads}</section>
       </div>
       <div>

@@ -50,6 +50,22 @@ test('publish buttons lock themselves while the request is running', () => {
   assert.match(html, /מעלה קובץ\.\.\./);
   assert.match(html, /גדול מ-50MB/);
   assert.match(uploadFailure(Object.assign(new Error('aborted'), { code: 'ECONNABORTED' })).message, /ההעלאה נותקה/);
+  const posted = propertyPage('', {
+    code: 'APT-104',
+    status: 'active',
+    address: 'הרצל 1',
+    city: 'בת ים',
+    price: 2000,
+    listingType: 'rent',
+    media: [],
+    publications: [],
+    conversations: [],
+    amenities: {},
+  }, '', '/b/broker-1', 'בדיקה', { platform: 'tiktok', url: 'https://www.tiktok.com/@momo/video/1' });
+  assert.match(posted, /הסרטון עלה לטיקטוק בהצלחה/);
+  assert.match(posted, /לצפייה בסרטון בטיקטוק/);
+  assert.match(posted, /https:\/\/www\.tiktok\.com\/@momo\/video\/1/);
+  assert.equal(posted.includes('סיימתי לטפל בפרסום'), false);
   assert.match(html, /דשבורד/);
   assert.match(html, /נכסים/);
   assert.match(html, /לידים/);

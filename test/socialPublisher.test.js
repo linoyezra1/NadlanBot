@@ -5,7 +5,7 @@ import { config, zernioApiRoot } from '../src/config.js';
 import { connectedPage } from '../src/domain/connectedPage.js';
 import { cloudinaryFolderName, signedCloudinaryParams } from '../src/services/storage.js';
 import { facebookSharerUrl, forwardCard, groupShareMessage } from '../src/domain/share.js';
-import { signaturesMatch } from '../src/routes/socialWebhook.js';
+import { acceptsWebhook, signaturesMatch } from '../src/routes/socialWebhook.js';
 import { commentReplyPlan, commentWebhookEvents, facebookPostExtras, selectPublicMedia, splitFeedMedia } from '../src/services/socialPublisher.js';
 import { publicCommentReply } from '../src/domain/waLink.js';
 
@@ -51,6 +51,10 @@ test('checks the social gateway webhook signature', () => {
   const header = crypto.createHmac('sha256', 'secret').update(body).digest('hex');
   assert.equal(signaturesMatch('secret', body, header), true);
   assert.equal(signaturesMatch('secret', body, 'nope'), false);
+  assert.equal(acceptsWebhook('secret', body, ''), true);
+  assert.equal(acceptsWebhook('', body, ''), true);
+  assert.equal(acceptsWebhook('secret', body, header), true);
+  assert.equal(acceptsWebhook('secret', body, 'deadbeef'), false);
 });
 
 test('signs Cloudinary uploads into the nadlanbot folder', () => {
@@ -140,9 +144,11 @@ test('plans a public and a private reply for Instagram and Facebook comments', (
       platform: 'instagram',
       platformPostId: 'media-9',
       postId: 'zernio-9',
+      text: 'אפשר פרטים',
       author: { name: 'דנה' },
     },
   });
+  assert.equal(instagram.text, 'אפשר פרטים');
   assert.equal(instagram.publicPostId, 'zernio-9');
   assert.equal(instagram.privatePostId, 'media-9');
   assert.deepEqual(instagram.lookupIds, ['media-9', 'zernio-9']);

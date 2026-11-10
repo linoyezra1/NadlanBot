@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { planPosts } from '../src/domain/plan.js';
 import { TIKTOK_CRM_NOTICE, TIKTOK_WA_LINE, tiktokVideoUrl } from '../src/domain/tiktokVideo.js';
-import { crmPublishNotice, summarizeResults } from '../src/services/social/distribute.js';
+import { crmPublishNotice, crmPublishPopup, summarizeResults } from '../src/services/social/distribute.js';
 
 const image = { mediaType: 'image', cloudUrl: 'https://cdn.example.com/a.jpg' };
 const localImage = { mediaType: 'image', cloudUrl: 'http://localhost:3000/media/a.jpg' };
@@ -50,6 +50,12 @@ test('keeps the other networks when TikTok has no video', () => {
     results: [results[2]],
     summary,
   }), TIKTOK_CRM_NOTICE);
+  const popup = crmPublishPopup({
+    results: [{ platform: 'tiktok', status: 'published', postUrl: 'https://www.tiktok.com/@momo/video/1' }],
+  });
+  assert.equal(popup.title, 'הסרטון עלה לטיקטוק בהצלחה');
+  assert.equal(popup.url, 'https://www.tiktok.com/@momo/video/1');
+  assert.equal(crmPublishPopup({ results: [results[2]] }), null);
 });
 
 test('does not publish localhost media', () => {

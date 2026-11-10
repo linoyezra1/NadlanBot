@@ -139,6 +139,15 @@ async function distributeThroughGateway({ broker, property, channels, groups, ca
   };
 }
 
+export function crmPublishPopup(outcome) {
+  const posted = (outcome?.results || []).find((item) => item.platform === 'tiktok' && (item.status === 'published' || item.status === 'processing'));
+  if (!posted) return null;
+  return {
+    title: 'הסרטון עלה לטיקטוק בהצלחה',
+    url: String(posted.postUrl || '').trim(),
+  };
+}
+
 export function crmPublishNotice(outcome) {
   const results = outcome?.results || [];
   const missingVideo = results.some((item) => item.code === 'NO_VIDEO');

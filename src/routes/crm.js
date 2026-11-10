@@ -7,7 +7,7 @@ import { brokerFormPage, calendarPage, connectPage, dashboardPage, leadPage, lea
 import { openBroker } from '../services/brokers.js';
 import { addPropertyFiles, createPropertyFromDraft, officeFields } from '../services/properties.js';
 import { gatewayConfigured, platformAuthUrl } from '../services/socialPublisher.js';
-import { crmPublishNotice, publishPropertyChannel } from '../services/social/distribute.js';
+import { crmPublishNotice, crmPublishPopup, publishPropertyChannel } from '../services/social/distribute.js';
 import { publishOnce } from '../crm/publishLock.js';
 
 const router = express.Router();
@@ -156,7 +156,10 @@ router.get('/b/:brokerId/properties/:code', wrap(async (req, res) => {
     return;
   }
   const [base, subtitle] = area(broker);
-  res.type('html').send(propertyPage('', property, String(req.query.notice || ''), base, subtitle));
+  const popup = req.query.published === 'tiktok'
+    ? { platform: 'tiktok', url: String(req.query.video || property.tiktokPostUrl || '') }
+    : null;
+  res.type('html').send(propertyPage('', property, String(req.query.notice || ''), base, subtitle, popup));
 }));
 
 router.post('/b/:brokerId/properties/:code/publish', wrap(async (req, res) => {
@@ -173,6 +176,13 @@ router.post('/b/:brokerId/properties/:code/publish', wrap(async (req, res) => {
   let notice = '';
   try {
     const outcome = await publishOnce(key, () => publishPropertyChannel(broker, property, platform));
+    const popup = crmPublishPopup(outcome);
+    if (popup) {
+      const query = new URLSearchParams({ published: 'tiktok' });
+      if (/^https:\/\//i.test(popup.url)) query.set('video', popup.url);
+      res.redirect(303, `${back}?${query}`);
+      return;
+    }
     notice = crmPublishNotice(outcome) || `הפרסום ל${names[platform]} הסתיים.`;
   } catch (error) {
     logger.error('publish failed', req.params.code, platform, error.message);
