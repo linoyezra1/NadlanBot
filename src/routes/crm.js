@@ -3,7 +3,7 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { dashboardData, getBroker, getLead, getProperty, listLeads, listProperties } from '../crm/data.js';
 import { readMultipart } from '../crm/multipart.js';
-import { brokerFormPage, connectPage, dashboardPage, leadPage, leadsPage, missingPage, propertiesPage, propertyFormPage, propertyPage } from '../crm/render.js';
+import { brokerFormPage, calendarPage, connectPage, dashboardPage, leadPage, leadsPage, missingPage, propertiesPage, propertyFormPage, propertyPage } from '../crm/render.js';
 import { openBroker } from '../services/brokers.js';
 import { addPropertyFiles, createPropertyFromDraft, officeFields } from '../services/properties.js';
 import { gatewayConfigured, platformAuthUrl } from '../services/socialPublisher.js';
@@ -102,7 +102,9 @@ router.get('/b/:brokerId', wrap(async (req, res) => {
     return;
   }
   const [base, subtitle] = area(broker);
-  res.type('html').send(dashboardPage('', await dashboardData(broker.id), base, subtitle));
+  const data = await dashboardData(broker.id);
+  data.broker = { isWhatsAppConnected: broker.isWhatsAppConnected };
+  res.type('html').send(dashboardPage('', data, base, subtitle));
 }));
 
 router.get('/b/:brokerId/properties/new', wrap(async (req, res) => {
@@ -188,6 +190,16 @@ router.post('/b/:brokerId/properties/:code/media', wrap(async (req, res) => {
   const notice = mediaNotice(media) || (payload.files.length ? '' : 'לא נבחר קובץ.');
   const query = notice ? `?notice=${encodeURIComponent(notice)}` : '';
   res.redirect(303, `/b/${req.params.brokerId}/properties/${encodeURIComponent(property.code)}${query}`);
+}));
+
+router.get('/b/:brokerId/calendar', wrap(async (req, res) => {
+  const broker = await getBroker(req.params.brokerId);
+  if (!broker) {
+    res.status(404).type('html').send(missingPage('', 'calendar', 'המתווך לא נמצא', 'אין נתיב עם המזהה הזה.'));
+    return;
+  }
+  const [base, subtitle] = area(broker);
+  res.type('html').send(calendarPage('', await listLeads('hot', broker.id), base, subtitle));
 }));
 
 router.get('/b/:brokerId/leads', wrap(async (req, res) => {

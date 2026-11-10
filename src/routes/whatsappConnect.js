@@ -180,19 +180,20 @@ function connectPage({ appId, configId, brokerId, version, ready }) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>חיבור וואטסאפ עסקי</title>
-  <style>
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f4f1ea; font-family: "Segoe UI", Arial, sans-serif; color: #1d1a16; }
-    main { width: min(440px, calc(100% - 32px)); background: white; border-radius: 24px; padding: 28px; }
-    button { font: inherit; background: #1f6b4a; color: white; border: 0; border-radius: 999px; padding: 12px 18px; cursor: pointer; }
-    p { color: #665f56; line-height: 1.5; }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="/crm.css">
 </head>
-<body>
-<main>
+<body class="connect-screen">
+<main class="connect-card">
   <h1>חיבור וואטסאפ עסקי</h1>
   <p>האפליקציה בנייד נשארת פעילה. הבוט עונה ללקוחות על אותו מספר, ונעצר ל־24 שעות אחרי שאתה כותב מהטלפון.</p>
-  <button id="connect" type="button">חבר את ה-WhatsApp העסקי שלך ל-NadlanBot</button>
-  <p id="status"></p>
+  <button id="connect" class="wa-connect" type="button">
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="currentColor"><path d="M12.04 3C7.31 3 3.48 6.83 3.48 11.56c0 1.5.39 2.96 1.14 4.25L3 21l5.33-1.4a8.5 8.5 0 0 0 3.71.84h.01c4.73 0 8.56-3.83 8.56-8.56C20.61 6.83 16.77 3 12.04 3zm4.9 12.16c-.2.57-1.17 1.04-1.63 1.1-.42.06-.95.08-1.53-.1-.35-.1-.8-.26-1.38-.51-2.43-1.05-4.01-3.5-4.13-3.66-.12-.16-.99-1.32-.99-2.52s.63-1.79.85-2.03c.22-.24.48-.3.64-.3h.46c.15 0 .35-.06.55.42.2.5.69 1.72.75 1.84.06.12.1.27.02.43-.08.16-.12.27-.24.41-.12.14-.25.32-.36.43-.12.12-.24.24-.1.47.14.24.62 1.02 1.33 1.65.91.81 1.68 1.06 1.92 1.18.24.12.38.1.52-.06.14-.16.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.4.66 1.64.78.24.12.4.18.46.28.06.1.06.58-.14 1.15z"/></svg>
+    חבר את ה-WhatsApp העסקי שלך ל-NadlanBot
+  </button>
+  <p id="status" class="connect-status"></p>
 </main>
 <script>
   const setup = ${payload};
@@ -236,6 +237,7 @@ function connectPage({ appId, configId, brokerId, version, ready }) {
         return;
       }
       status.textContent = 'החיבור הושלם בהצלחה! אפליקציית הוואטסאפ נשארת פעילה כרגיל בנייד שלך.';
+      status.classList.add('ok');
       alert(status.textContent);
       if (window.opener) window.close();
     }).catch(() => {

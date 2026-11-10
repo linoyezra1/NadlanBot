@@ -13,13 +13,35 @@ function leadWhere(brokerId, extra = {}) {
   return { role: 'lead', ...extra, ...(brokerId ? { brokerId } : {}) };
 }
 
+function startOfTodayInJerusalem(now = new Date()) {
+  const day = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  const probe = new Date(`${day}T00:00:00Z`);
+  const hour = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).format(probe));
+  const minute = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Jerusalem',
+    minute: '2-digit',
+  }).format(probe));
+  return new Date(probe.getTime() - (hour * 60 + minute) * 60 * 1000);
+}
+
 export async function dashboardData(brokerId) {
   const propertyWhere = brokerId ? { brokerId } : {};
-  const [propertyCount, leadCount, hotCount, openCount, properties, hotLeads] = await Promise.all([
+  const today = startOfTodayInJerusalem();
+  const [propertyCount, leadCount, hotCount, openCount, todayCount, properties, hotLeads] = await Promise.all([
     prisma.property.count({ where: propertyWhere }),
     prisma.conversation.count({ where: leadWhere(brokerId) }),
     prisma.conversation.count({ where: leadWhere(brokerId, { status: 'converted_hot_lead' }) }),
     prisma.conversation.count({ where: leadWhere(brokerId, { status: 'active' }) }),
+    prisma.conversation.count({ where: leadWhere(brokerId, { createdAt: { gte: today } }) }),
     prisma.property.findMany({
       where: propertyWhere,
       orderBy: { createdAt: 'desc' },
@@ -36,7 +58,7 @@ export async function dashboardData(brokerId) {
       include: leadListInclude,
     }),
   ]);
-  return { propertyCount, leadCount, hotCount, openCount, properties, hotLeads };
+  return { propertyCount, leadCount, hotCount, openCount, todayCount, properties, hotLeads };
 }
 
 export function listProperties(q, brokerId) {

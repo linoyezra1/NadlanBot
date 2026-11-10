@@ -13,6 +13,7 @@ import {
   propertyStatus,
   tagLabel,
 } from './format.js';
+import { naturalWaLink } from '../domain/waLink.js';
 import { layout } from './layout.js';
 
 function photo(url, label) {
@@ -22,42 +23,84 @@ function photo(url, label) {
   return `<div class="photo">${image}<div class="placeholder">אין תמונה</div></div>`;
 }
 
+function shareHref(property) {
+  const customer = naturalWaLink(property);
+  const text = [
+    [property.address, place(property)].filter(Boolean).join(', ') || property.code,
+    money(property.price),
+    customer ? `לפרטים: ${customer}` : '',
+  ].filter(Boolean).join('\n');
+  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+}
+
 function propertyCard(property, token, base = '') {
   const cover = property.media?.[0];
   const [statusLabel, tone] = propertyStatus(property.status);
   const leads = property.conversations || [];
   const hot = leads.filter((lead) => lead.status === 'converted_hot_lead').length;
+  const deal = property.listingType === 'rent' ? 'להשכרה' : property.listingType === 'sale' ? 'למכירה' : null;
+  const parking = property.amenities?.parking === true ? 'חניה' : null;
   const bits = [
+    deal,
     property.rooms != null ? `${property.rooms} חדרים` : null,
     property.floor ? `קומה ${property.floor}` : null,
     property.sizeSqm != null ? `${property.sizeSqm} מ"ר` : null,
+    parking,
   ].filter(Boolean);
-  return `<a class="card" href="${href(token, `${base}/properties/${encodeURIComponent(property.code)}`)}">
-    ${photo(cover?.cloudUrl, property.code)}
-    <div class="body">
-      <div class="code">${escapeHtml(property.code)} ${pill(statusLabel, tone)}</div>
-      <div class="price">${escapeHtml(money(property.price))}</div>
-      <div>${escapeHtml(property.address || place(property) || 'כתובת לא הוזנה')}</div>
-      <div class="muted">${escapeHtml(place(property))}</div>
-      <div class="facts">${bits.map((bit) => `<span class="chip">${escapeHtml(bit)}</span>`).join('')}</div>
-      <div class="muted">${leads.length} לקוחות${hot ? ` · ${hot} לידים חמים` : ''}</div>
+  const open = href(token, `${base}/properties/${encodeURIComponent(property.code)}`);
+  return `<article class="card">
+    <a class="card-link" href="${open}">
+      ${photo(cover?.cloudUrl, property.code)}
+      <div class="body">
+        <div class="code">${escapeHtml(property.code)} ${pill(statusLabel, tone)}</div>
+        <div class="price">${escapeHtml(money(property.price))}</div>
+        <div>${escapeHtml(property.address || place(property) || 'כתובת לא הוזנה')}</div>
+        <div class="muted">${escapeHtml(place(property))}</div>
+        <div class="facts">${bits.map((bit) => `<span class="chip">${escapeHtml(bit)}</span>`).join('')}</div>
+        <div class="muted">${leads.length} לידים${hot ? ` · ${hot} חמים` : ''}</div>
+      </div>
+    </a>
+    <div class="card-actions">
+      <a class="ghost" href="${shareHref(property)}" target="_blank" rel="noopener">שתף בוואטסאפ</a>
+      <a class="primary" href="${open}#publish-form">פרסם</a>
     </div>
-  </a>`;
+  </article>`;
+}
+
+function chatBadge(lead) {
+  const until = lead?.botPausedUntil ? new Date(lead.botPausedUntil).getTime() : 0;
+  if (until > Date.now()) return pill('המתווך בשיחה', 'hot');
+  return pill('הבוט בשיחה', 'open');
+}
+
+function matchChips(lead) {
+  const area = place(lead.property);
+  const chips = [
+    area ? `אזור ${area}` : null,
+    lead.property?.price != null ? money(lead.property.price) : null,
+  ].filter(Boolean);
+  return chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join('');
 }
 
 function personRow(lead, token, base = '') {
   const [label, tone] = leadStatus(lead.status);
   const snippet = String(lead.messages?.[0]?.text || lead.summary || '').replace(/\s+/g, ' ').trim();
   return `<a class="card person" href="${href(token, `${base}/leads/${encodeURIComponent(lead.id)}`)}">
-    <div>
-      <strong>${escapeHtml(customerName(lead))}</strong>
-      <span class="muted">${escapeHtml(formatPhone(lead.leadPhone))}</span>
+    <div class="lead-top">
+      <div>
+        <strong>${escapeHtml(customerName(lead))}</strong>
+        <span class="phone" dir="ltr">${escapeHtml(formatPhone(lead.leadPhone))}</span>
+      </div>
+      ${chatBadge(lead)}
     </div>
-    <div>
-      <div>${escapeHtml(lead.property?.code || 'בלי נכס')}</div>
-      <div class="muted">${escapeHtml(snippet ? snippet.slice(0, 90) : 'אין עדיין סיכום')}</div>
+    <div class="facts">${matchChips(lead)}</div>
+    <div class="lead-meta">
+      <div>
+        <div>${escapeHtml(lead.property?.code || 'בלי נכס')}</div>
+        <div class="muted">${escapeHtml(snippet ? snippet.slice(0, 90) : 'אין עדיין סיכום')}</div>
+      </div>
+      <div>${pill(label, tone)}<div class="muted">${escapeHtml(formatWhen(lead.updatedAt))}</div></div>
     </div>
-    <div>${pill(label, tone)}<div class="muted">${escapeHtml(formatWhen(lead.updatedAt))}</div></div>
   </a>`;
 }
 
@@ -72,23 +115,31 @@ export function dashboardPage(token, data, base = '', subtitle = 'האזור ש�
   const hot = data.hotLeads.length
     ? `<div class="people">${data.hotLeads.map((lead) => personRow(lead, token, base)).join('')}</div>`
     : '<div class="empty">אין עדיין ליד שביקש סיור או שיחה.</div>';
-  return page(token, 'סקירה', 'home', `
+  const waOn = Boolean(data.broker?.isWhatsAppConnected);
+  const waLabel = waOn ? 'וואטסאפ עסקי מחובר' : 'וואטסאפ עסקי לא מחובר';
+  const waBadge = waOn ? '<span class="ok-badge">מחובר</span>' : '';
+  return page(token, 'דשבורד', 'home', `
     <header class="page-head">
       <div>
-        <h1>סקירה</h1>
-        <p>הנכסים שנקלטו, והלקוחות שפנו מהוואטסאפ.</p>
+        <h1>דשבורד</h1>
+        <p>חיבור הוואטסאפ, לידים חדשים והסיורים הקרובים.</p>
       </div>
       <a class="primary" href="${href(token, `${base}/properties/new`)}">דירה חדשה</a>
     </header>
+    <section class="status-grid">
+      <a class="stat" href="${href(token, `${base}/connect`)}"><span>וואטסאפ</span>${waOn ? waBadge : '<b>לא מחובר</b>'}<span>${waLabel}</span></a>
+      <article class="stat"><span>לידים חדשים היום</span><b>${data.todayCount || 0}</b></article>
+      <a class="stat" href="${href(token, `${base}/calendar`)}"><span>סיורים קרובים</span><b>${data.hotCount}</b></a>
+    </section>
     <section class="stats">
       <article class="stat"><span>נכסים</span><b>${data.propertyCount}</b></article>
-      <article class="stat"><span>לקוחות</span><b>${data.leadCount}</b></article>
-      <article class="stat hot"><span>לידים חמים</span><b>${data.hotCount}</b></article>
+      <article class="stat"><span>לידים</span><b>${data.leadCount}</b></article>
+      <article class="stat"><span>לידים חמים</span><b>${data.hotCount}</b></article>
       <article class="stat"><span>שיחות פתוחות</span><b>${data.openCount}</b></article>
     </section>
     <div class="layout">
       <section class="panel"><h2>נכסים אחרונים</h2>${recent}</section>
-      <section class="panel"><h2>לידים חמים</h2>${hot}</section>
+      <section class="panel"><h2>סיורים קרובים</h2>${hot}</section>
     </div>`, base, subtitle);
 }
 
@@ -100,7 +151,7 @@ export function propertiesPage(token, properties, query, base = '', subtitle = '
     <header class="page-head">
       <div>
         <h1>נכסים</h1>
-        <p>${properties.length} נכסים שמורים.</p>
+        <p>${properties.length} דירות למכירה ולהשכרה.</p>
       </div>
       <div class="actions">
         <a class="primary" href="${href(token, `${base}/properties/new`)}">דירה חדשה</a>
@@ -240,14 +291,28 @@ export function leadsPage(token, leads, filter, base = '', subtitle = 'האזו�
   const rows = leads.length
     ? `<div class="people">${leads.map((lead) => personRow(lead, token, base)).join('')}</div>`
     : `<div class="empty">${empty}</div>`;
-  return page(token, 'לקוחות', 'leads', `
+  return page(token, 'לידים', 'leads', `
     <header class="page-head">
       <div>
-        <h1>לקוחות</h1>
-        <p>פניות שנפתחו מול הבוט, עם כל השיחה.</p>
+        <h1>לידים</h1>
+        <p>לקוחות פעילים, הנכס שמתאים להם, ומי מנהל את השיחה.</p>
       </div>
     </header>
     ${filters(token, filter, base)}
+    ${rows}`, base, subtitle);
+}
+
+export function calendarPage(token, leads, base = '', subtitle = 'האזור שלך') {
+  const rows = leads.length
+    ? `<div class="people">${leads.map((lead) => personRow(lead, token, base)).join('')}</div>`
+    : '<div class="empty">אין עדיין סיור או שיחה ביומן. ליד חם שביקש סיור מופיע כאן.</div>';
+  return page(token, 'יומן', 'calendar', `
+    <header class="page-head">
+      <div>
+        <h1>יומן</h1>
+        <p>סיורים ושיחות שלידים חמים ביקשו.</p>
+      </div>
+    </header>
     ${rows}`, base, subtitle);
 }
 
@@ -273,9 +338,9 @@ export function leadPage(token, lead, base = '', subtitle = 'האזור שלך')
   return page(token, customerName(lead), 'leads', `
     <header class="page-head">
       <div>
-        <h1>${escapeHtml(customerName(lead))} ${pill(label, tone)}</h1>
+        <h1>${escapeHtml(customerName(lead))} ${pill(label, tone)} ${chatBadge(lead)}</h1>
         <p class="row-links">
-          <span>${escapeHtml(formatPhone(phone))}</span>
+          <span class="phone" dir="ltr">${escapeHtml(formatPhone(phone))}</span>
           ${phone ? `<a href="https://wa.me/${escapeHtml(phone.replace(/\D/g, ''))}">וואטסאפ</a>` : ''}
           ${phone ? `<a href="tel:+${escapeHtml(phone.replace(/\D/g, ''))}">חיוג</a>` : ''}
         </p>
@@ -434,12 +499,13 @@ export function connectPage(token, broker, notice = '') {
   const connected = new Set(broker.connectedNetworks || []);
   const buttons = CONNECT_BUTTONS.map(([id, label]) => {
     const on = connected.has(id);
-    const text = on ? `${label} · מחובר` : `חיבור ${label}`;
-    if (notice) return `<span class="primary">${text}</span>`;
-    return `<a class="primary" href="${href(token, `${base}/connect/${id}`)}">${text}</a>`;
+    const badge = on ? '<span class="ok-badge">מחובר</span>' : '';
+    const text = on ? label : `חיבור ${label}`;
+    if (notice) return `<span class="primary">${text}${badge}</span>`;
+    return `<a class="primary" href="${href(token, `${base}/connect/${id}`)}">${text}${badge}</a>`;
   }).join('');
   const whatsapp = broker.isWhatsAppConnected
-    ? '<span class="primary">וואטסאפ עסקי · מחובר</span>'
+    ? '<span class="primary">וואטסאפ עסקי <span class="ok-badge">מחובר</span></span>'
     : `<a class="primary" href="/connect?brokerId=${encodeURIComponent(broker.id)}">חבר את ה-WhatsApp העסקי שלך ל-NadlanBot</a>`;
   return page(token, 'חיבור חשבונות', 'connect', `
     <header class="page-head">
@@ -449,7 +515,12 @@ export function connectPage(token, broker, notice = '') {
       </div>
     </header>
     ${notice ? `<div class="alert">${escapeHtml(notice)}</div>` : ''}
-    <section class="panel"><div class="connect-list">${buttons}${whatsapp}</div></section>`, base, broker.fullName);
+    <div class="connect-wrap">
+      <section class="connect-card">
+        <h2>חשבונות</h2>
+        <div class="connect-list">${buttons}${whatsapp}</div>
+      </section>
+    </div>`, base, broker.fullName);
 }
 
 export function missingPage(token, active, title, text) {

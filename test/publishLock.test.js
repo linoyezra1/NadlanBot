@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { propertyPage } from '../src/crm/render.js';
+import { leadsPage, propertiesPage, propertyPage } from '../src/crm/render.js';
 import { publishOnce } from '../src/crm/publishLock.js';
 
 test('a second publish waits for the first instead of starting another', async () => {
@@ -42,4 +42,43 @@ test('publish buttons lock themselves while the request is running', () => {
   assert.match(html, /dataset\.busy/);
   assert.match(html, /מפרסם\.\.\./);
   assert.match(html, /button\.disabled = true/);
+  assert.match(html, /דשבורד/);
+  assert.match(html, /נכסים/);
+  assert.match(html, /לידים/);
+  assert.match(html, /יומן/);
+  assert.match(html, />עוד</);
+  assert.match(html, /w-64|width: 16rem|class="side"/);
+  assert.equal(html.includes('הדרכות'), false);
+  const cards = propertiesPage('', [{
+    code: 'APT-104',
+    status: 'active',
+    listingType: 'rent',
+    address: 'הרצל 1',
+    city: 'בת ים',
+    rooms: 3,
+    floor: '2',
+    sizeSqm: 80,
+    price: 5000,
+    amenities: { parking: true },
+    media: [],
+    conversations: [],
+  }], '', '/b/broker-1');
+  assert.match(cards, /שתף בוואטסאפ/);
+  assert.match(cards, /פרסם/);
+  assert.match(cards, /חניה/);
+  assert.match(cards, /3 חדרים/);
+  const leads = leadsPage('', [{
+    id: 'lead-1',
+    status: 'active',
+    leadPhone: '972501234567',
+    contactName: 'דנה',
+    summary: 'מעוניינת',
+    updatedAt: new Date('2026-11-10T12:00:00Z'),
+    botPausedUntil: new Date('2026-11-11T12:00:00Z'),
+    property: { code: 'APT-104', city: 'בת ים', neighborhood: 'רמת יוסף', price: 5000 },
+    messages: [],
+  }], '', '/b/broker-1');
+  assert.match(leads, /dir="ltr"/);
+  assert.match(leads, /המתווך בשיחה/);
+  assert.match(leads, /אזור רמת יוסף, בת ים/);
 });
