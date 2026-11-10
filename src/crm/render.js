@@ -165,6 +165,39 @@ export function propertiesPage(token, properties, query, base = '', subtitle = '
     ${cards}`, base, subtitle);
 }
 
+function uploadGuard(formId) {
+  const endScript = '<' + '/script>';
+  return `<script>
+    const uploadForm = document.getElementById(${JSON.stringify(formId)});
+    const maxBytes = ${50 * 1024 * 1024};
+    uploadForm?.addEventListener('submit', (event) => {
+      if (uploadForm.dataset.busy === '1') {
+        event.preventDefault();
+        return;
+      }
+      const input = uploadForm.querySelector('input[type="file"]');
+      const heavy = [...(input?.files || [])].find((file) => file.size > maxBytes);
+      const status = uploadForm.querySelector('[data-upload-status]');
+      if (heavy) {
+        event.preventDefault();
+        if (status) {
+          status.hidden = false;
+          status.textContent = 'הקובץ ' + heavy.name + ' גדול מ-50MB. קצרו את הסרטון לפני ההעלאה.';
+        }
+        return;
+      }
+      const chosen = input?.files?.length || 0;
+      if (!chosen) return;
+      uploadForm.dataset.busy = '1';
+      const button = uploadForm.querySelector('button[type="submit"]');
+      if (button) {
+        button.textContent = 'מעלה קובץ...';
+        setTimeout(() => { button.disabled = true; }, 0);
+      }
+    });
+  ${endScript}`;
+}
+
 function publishButtons(token, base, code) {
   if (!base) return '';
   const action = href(token, `${base}/properties/${encodeURIComponent(code)}/publish`);
@@ -218,9 +251,11 @@ export function propertyPage(token, property, notice = '', base = '', subtitle =
     }).join('')}</div>`
     : '<div class="empty">לנכס הזה עדיין אין מדיה.</div>';
   const upload = property.broker
-    ? `<form class="sheet" method="post" enctype="multipart/form-data" action="${href(token, `${base}/properties/${encodeURIComponent(property.code)}/media`)}">
-        <label class="field"><span>הוספת תמונות וסרטונים</span><input type="file" name="media" accept="image/*,video/*" multiple></label>
+    ? `<form class="sheet" id="media-upload" method="post" enctype="multipart/form-data" action="${href(token, `${base}/properties/${encodeURIComponent(property.code)}/media`)}">
+        <label class="field"><span>הוספת תמונות וסרטונים</span><input type="file" name="media" accept="image/*,video/mp4,video/quicktime,.mp4,.mov" multiple><small>סרטון MP4 או MOV עד 50MB. השאירו את הדף פתוח עד סיום ההעלאה.</small></label>
+        <p class="upload-status" data-upload-status hidden></p>
         <button class="primary" type="submit">העלאה</button>
+        ${uploadGuard('media-upload')}
       </form>`
     : '';
   const leads = property.conversations.length
@@ -450,7 +485,7 @@ export function propertyFormPage(token, broker, { errors = [], values = {} } = {
       </div>
     </header>
     ${alert}
-    <form class="block sheet" method="post" enctype="multipart/form-data" action="${href(token, `${base}/properties`)}">
+    <form class="block sheet" id="property-form" method="post" enctype="multipart/form-data" action="${href(token, `${base}/properties`)}">
       <fieldset class="field">
         <legend>למכירה או להשכרה *</legend>
         <div class="yesno">
@@ -483,8 +518,10 @@ export function propertyFormPage(token, broker, { errors = [], values = {} } = {
         </div>
         ${areaField('privateNotes', 'הערות אישיות', values.privateNotes)}
       </section>
-      <label class="field"><span>תמונות וסרטונים</span><input type="file" name="media" accept="image/*,video/*" multiple><small>עד 20 קבצים.</small></label>
+      <label class="field"><span>תמונות וסרטונים</span><input type="file" name="media" accept="image/*,video/mp4,video/quicktime,.mp4,.mov" multiple><small>עד 20 קבצים. סרטון MP4 או MOV עד 50MB.</small></label>
+      <p class="upload-status" data-upload-status hidden></p>
       <button class="primary" type="submit">שמירת הנכס</button>
+      ${uploadGuard('property-form')}
     </form>`, base, broker.fullName);
 }
 

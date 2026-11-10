@@ -3,6 +3,7 @@ import test from 'node:test';
 import { leadsPage, propertiesPage, propertyPage } from '../src/crm/render.js';
 import { TIKTOK_CRM_NOTICE } from '../src/domain/tiktokVideo.js';
 import { publishOnce } from '../src/crm/publishLock.js';
+import { uploadFailure } from '../src/crm/multipart.js';
 
 test('a second publish waits for the first instead of starting another', async () => {
   let calls = 0;
@@ -36,6 +37,7 @@ test('publish buttons lock themselves while the request is running', () => {
     publications: [],
     conversations: [],
     amenities: {},
+    broker: { id: 'broker-1', fullName: 'בדיקה' },
   }, TIKTOK_CRM_NOTICE, '/b/broker-1', 'בדיקה');
   assert.match(html, /פרסם בפייסבוק/);
   assert.match(html, /פרסם באינסטגרם/);
@@ -45,6 +47,9 @@ test('publish buttons lock themselves while the request is running', () => {
   assert.match(html, /button\.disabled = true/);
   assert.match(html, /role="alert"/);
   assert.match(html, /פרסום לטיקטוק נכשל/);
+  assert.match(html, /מעלה קובץ\.\.\./);
+  assert.match(html, /גדול מ-50MB/);
+  assert.match(uploadFailure(Object.assign(new Error('aborted'), { code: 'ECONNABORTED' })).message, /ההעלאה נותקה/);
   assert.match(html, /דשבורד/);
   assert.match(html, /נכסים/);
   assert.match(html, /לידים/);

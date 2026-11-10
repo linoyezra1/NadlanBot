@@ -2,7 +2,7 @@ import express from 'express';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { dashboardData, getBroker, getLead, getProperty, listLeads, listProperties } from '../crm/data.js';
-import { readMultipart } from '../crm/multipart.js';
+import { readMultipart, uploadFailure } from '../crm/multipart.js';
 import { brokerFormPage, calendarPage, connectPage, dashboardPage, leadPage, leadsPage, missingPage, propertiesPage, propertyFormPage, propertyPage } from '../crm/render.js';
 import { openBroker } from '../services/brokers.js';
 import { addPropertyFiles, createPropertyFromDraft, officeFields } from '../services/properties.js';
@@ -18,12 +18,14 @@ function wrap(handler) {
     try {
       await handler(req, res);
     } catch (error) {
-      logger.error('request failed', req.method, req.originalUrl, error.message);
-      const connectRoute = String(req.originalUrl || '').includes('/connect/');
-      const message = connectRoute || config.nodeEnv !== 'production'
-        ? error.message
+      const failure = uploadFailure(error);
+      logger.error('request failed', req.method, req.originalUrl, failure.message);
+      const url = String(req.originalUrl || '');
+      const showDetail = url.includes('/connect/') || /\/media(?:\?|$)|\/properties(?:\?|$)/.test(url);
+      const message = showDetail || config.nodeEnv !== 'production'
+        ? failure.message
         : 'לא הצלחנו לטעון את הנתונים.';
-      res.status(error.status || 500).type('html').send(missingPage('', '', 'תקלה', message));
+      res.status(failure.status || 500).type('html').send(missingPage('', '', 'תקלה', message));
     }
   };
 }

@@ -230,7 +230,8 @@ button.primary:disabled, .primary:disabled { opacity: 0.55; cursor: progress; tr
 .empty { padding: 28px; color: var(--muted-foreground); }
 .row-links { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .row-links a { color: var(--primary); }
-.alert { background: color-mix(in oklch, var(--destructive) 10%, white); color: var(--destructive); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 16px; white-space: pre-wrap; }
+.alert, .upload-status { background: color-mix(in oklch, var(--destructive) 10%, white); color: var(--destructive); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 16px; white-space: pre-wrap; }
+.upload-status[hidden] { display: none; }
 .alert.toast { position: sticky; top: 12px; z-index: 6; }
 .alert p { margin: 0 0 4px; }
 form.sheet { display: grid; gap: 14px; }
@@ -260,7 +261,10 @@ form.sheet { display: grid; gap: 14px; }
   place-items: center;
   padding: 24px;
 }
-.connect-status { color: var(--muted-foreground); line-height: 1.5; }
+.connect-status, .privacy p { color: var(--muted-foreground); line-height: 1.6; }
+.privacy h1, .privacy h2 { color: var(--foreground); }
+.privacy h2 { margin: 22px 0 8px; font-size: 18px; }
+.privacy a { color: var(--primary); }
 .connect-status:empty { display: none; }
 
 .tabbar, .more-sheet { display: none; }

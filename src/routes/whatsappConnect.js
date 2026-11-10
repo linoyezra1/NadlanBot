@@ -137,6 +137,10 @@ router.post('/api/auth/facebook/delete-data', facebookForm, (req, res) => {
   });
 });
 
+router.get('/privacy', (_req, res) => {
+  res.type('html').send(privacyPage());
+});
+
 router.get('/api/auth/facebook/delete-data', (req, res) => {
   const code = String(req.query.code || '');
   const found = code && deletionStatus(code);
@@ -161,6 +165,37 @@ router.post('/api/whatsapp/connect-callback', express.json({ limit: '100kb' }), 
     res.status(error.status || 400).json({ error: error.message || 'החיבור נכשל' });
   }
 });
+
+function privacyPage() {
+  const base = config.publicBaseUrl || '';
+  const deletion = `${base}/api/auth/facebook/delete-data`;
+  const digits = String(config.whatsappDisplayNumber || '').replace(/\D/g, '');
+  const contact = digits
+    ? `<a href="https://wa.me/${digits}">וואטסאפ ${digits}</a>`
+    : 'השיחה בוואטסאפ מול NadlanBot';
+  return `<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>מדיניות פרטיות · NadlanBot</title>
+  <link rel="stylesheet" href="/crm.css">
+</head>
+<body class="connect-screen">
+<main class="connect-card privacy">
+  <h1>מדיניות פרטיות</h1>
+  <p>NadlanBot מפעילה עוזר וואטסאפ למתווכי נדל״ן: קליטת נכסים, פרסום לפי בקשת המתווך, ומענה ללקוחות שפונים על דירה.</p>
+  <h2>איזה מידע נשמר</h2>
+  <p>כדי לנהל שיחה וליד נשמרים מספר הטלפון, שם אם נמסר, תוכן ההודעות, והנכס שעליו מדובר. מתווך שמעלה תמונות או סרטון שומר אותם לצורך הצגה ופרסום. מתווך שמחבר וואטסאפ עסקי, פייסבוק, אינסטגרם או טיקטוק מאפשר לשרת לשלוח הודעות ולפרסם בשמו. לא נמכר מידע לגורם פרסום חיצוני.</p>
+  <h2>מחיקת נתונים</h2>
+  <p>אפשר לבקש מחיקה של פרטי השיחה והליד. Meta שולחת בקשת מחיקה לכתובת <a href="${deletion}">${deletion}</a>. אפשר גם לבקש מחיקה ישירות דרך ${contact}.</p>
+  <h2>יצירת קשר</h2>
+  <p>לשאלה על המידע שנשמר: ${contact}.</p>
+  <p class="muted">עודכן בנובמבר 2026.</p>
+</main>
+</body>
+</html>`;
+}
 
 function facebookStatusPage(title, text) {
   const escape = (value) => String(value)

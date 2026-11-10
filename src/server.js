@@ -62,5 +62,7 @@ export async function startServer() {
     logger.info(`NadlanBot listening on ${config.port}`);
     ensureCommentWebhook().catch((error) => logger.error('comment webhook setup failed', error.message));
   });
+  server.requestTimeout = 10 * 60 * 1000;
+  server.headersTimeout = 10 * 60 * 1000 + 1000;
   return server;
 }

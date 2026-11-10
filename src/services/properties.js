@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { AMENITY_KEYS, AMENITY_LABELS, blankFields, coerceField, missingAmenityKeys } from '../domain/fields.js';
 import { prisma } from '../db.js';
 import { storeBuffer } from './storage.js';
+import { MAX_MEDIA_BYTES } from '../crm/multipart.js';
 
 export async function createPropertyFromDraft({ brokerId, fields }) {
   const created = await prisma.property.create({
@@ -119,6 +120,10 @@ export async function addPropertyFiles(propertyId, files) {
   const accepted = [];
   for (const file of incoming) {
     const mediaType = mediaKind(file);
+    if (file.buffer.length > MAX_MEDIA_BYTES) {
+      rejected.push(`${file.filename || 'קובץ'} גדול מ-50MB`);
+      continue;
+    }
     if (!mediaType) {
       rejected.push(file.filename || 'קובץ');
       continue;

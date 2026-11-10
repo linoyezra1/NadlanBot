@@ -1,22 +1,41 @@
 const DEFAULT_MAX = 80 * 1024 * 1024;
+export const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
+
+export function uploadFailure(error) {
+  if (error?.message === 'aborted' || error?.code === 'ECONNRESET' || error?.code === 'ECONNABORTED') {
+    const aborted = new Error('ההעלאה נותקה לפני שהסרטון הגיע במלואו. השאירו את הדף פתוח עד שההעלאה מסתיימת.');
+    aborted.status = 400;
+    return aborted;
+  }
+  return error;
+}
 
 export function readMultipart(req, maxBytes = DEFAULT_MAX) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(uploadFailure(error));
+    };
     req.on('data', (chunk) => {
       size += chunk.length;
       if (size > maxBytes) {
-        const error = new Error('הקבצים גדולים מדי');
+        const error = new Error('הקבצים גדולים מדי. סרטון אחד יכול להיות עד 50MB.');
         error.status = 413;
-        reject(error);
+        fail(error);
         req.destroy();
         return;
       }
       chunks.push(chunk);
     });
-    req.on('error', reject);
+    req.on('aborted', () => fail(Object.assign(new Error('aborted'), { code: 'ECONNABORTED' })));
+    req.on('error', fail);
     req.on('end', () => {
+      if (settled) return;
+      settled = true;
       try {
         resolve(parseMultipart(Buffer.concat(chunks), req.headers['content-type'] || ''));
       } catch (error) {

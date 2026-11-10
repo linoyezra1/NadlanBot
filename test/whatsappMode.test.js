@@ -124,6 +124,11 @@ test('facebook removal addresses answer', async () => {
     assert.equal(removed.status, 200);
     const connect = await fetch(`http://127.0.0.1:${port}/connect`);
     const page = await connect.text();
+    const privacy = await fetch(`http://127.0.0.1:${port}/privacy`);
+    const policy = await privacy.text();
+    assert.equal(privacy.status, 200);
+    assert.match(policy, /מדיניות פרטיות/);
+    assert.match(policy, /\/api\/auth\/facebook\/delete-data/);
     assert.match(page, /finishConnect\(response\.authResponse\.code, ''\)/);
     assert.match(page, /finishConnect\(returned\.get\('code'\), pageUri\)/);
   } finally {
