@@ -6,6 +6,7 @@ import { parseMetaWebhook } from '../src/services/metaWebhook.js';
 import { idsFromDebug } from '../src/services/whatsappConnect.js';
 import { isBotPaused } from '../src/services/whatsappMode.js';
 import { createApp } from '../src/app.js';
+import { mobileOAuthUrl } from '../src/domain/whatsappOAuth.js';
 import { deletionStatus, parseSignedRequest, rememberDeletion } from '../src/services/facebookSignedRequest.js';
 import { signaturesMatch } from '../src/routes/whatsappConnect.js';
 
@@ -86,6 +87,24 @@ test('accepts a signed Facebook data-deletion request', () => {
   const code = rememberDeletion(data.user_id);
   assert.equal(deletionStatus(code).userId, '99');
   assert.equal(deletionStatus('missing'), null);
+});
+
+test('mobile login is a full-page OAuth redirect', () => {
+  const url = new URL(mobileOAuthUrl({
+    appId: '123',
+    version: 'v21.0',
+    configId: 'cfg',
+    redirectUri: 'https://nadlanbot.up.railway.app/connect',
+    brokerId: 'broker-1',
+  }));
+  assert.equal(url.origin + url.pathname, 'https://www.facebook.com/v21.0/dialog/oauth');
+  assert.equal(url.searchParams.get('display'), 'touch');
+  assert.equal(url.searchParams.get('redirect_uri'), 'https://nadlanbot.up.railway.app/connect');
+  assert.equal(url.searchParams.get('response_type'), 'code');
+  assert.equal(url.searchParams.get('state'), 'broker-1');
+  assert.equal(url.searchParams.get('override_default_response_type'), 'true');
+  const extras = JSON.parse(url.searchParams.get('extras'));
+  assert.equal(extras.featureType, 'whatsapp_business_app_onboarding');
 });
 
 test('facebook removal addresses answer', async () => {

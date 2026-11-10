@@ -7,6 +7,7 @@ import { brokerConnectUrl, publishPropertyPost } from '../socialPublisher.js';
 import { resolveAccounts } from './credentials.js';
 import { publishFacebookGroup, publishFacebookPage, publishInstagram } from './meta.js';
 import { publishTikTokVideo, tiktokCaption } from './tiktok.js';
+import { generateMarketing } from '../openai.js';
 
 function label(result) {
   if (result.platform === 'facebook_group') return `קבוצה ${result.targetName || ''}`.trim();
@@ -134,6 +135,19 @@ async function distributeThroughGateway({ broker, property, channels, groups, ca
     summary: summarizeResults(results, waLink),
     messages: gatewayMessages(results, property),
   };
+}
+
+export async function publishPropertyChannel(broker, property, platform) {
+  const waLink = naturalWaLink(property) || clickToWhatsAppLink(property.code);
+  const caption = property.marketingText
+    || await generateMarketing({ ...property, code: property.code }, waLink, broker);
+  return distribute({
+    broker,
+    property,
+    channels: [platform],
+    groups: [],
+    caption,
+  });
 }
 
 export async function distribute({ broker, property, channels, groups, caption }) {

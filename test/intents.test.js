@@ -6,6 +6,7 @@ import {
   isNewPropertyIntent,
   parseAddGroup,
   parsePublishCommand,
+  parsePublishRequest,
 } from '../src/domain/intents.js';
 
 test('reads a property code from the click-to-chat opener', () => {
@@ -22,6 +23,11 @@ test('the ad opener is not a hot lead', () => {
 test('recognizes broker commands', () => {
   assert.equal(isNewPropertyIntent('יש לי דירה חדשה להעלות'), true);
   assert.equal(parsePublishCommand('פרסם APT-104'), 'APT-104');
+  assert.equal(parsePublishCommand('פרסם באינסטגרם APT-104'), 'APT-104');
+  assert.equal(parsePublishCommand('פרסם APT-104 בפייסבוק'), 'APT-104');
+  assert.equal(parsePublishCommand('פרסם בטיקטוק'), null);
+  assert.deepEqual(parsePublishRequest('פרסם באינסטגרם APT-8').channels, ['instagram']);
+  assert.deepEqual(parsePublishRequest('פרסם APT-8 בפייסבוק ובטיקטוק').channels, ['facebook', 'tiktok']);
   assert.deepEqual(parseAddGroup('הוסף קבוצה 1234567890 דירות תל אביב'), {
     groupId: '1234567890',
     name: 'דירות תל אביב',

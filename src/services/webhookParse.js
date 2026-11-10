@@ -9,6 +9,9 @@ const BUTTON_IDS = {
   'אישור הנוסח': 'approve_copy',
   'כל הערוצים': 'channels_all',
   'בלי טיקטוק': 'channels_no_tiktok',
+  'פרסם בפייסבוק': 'channels_facebook',
+  'פרסם באינסטגרם': 'channels_instagram',
+  'פרסם בטיקטוק': 'channels_tiktok',
 };
 
 function mediaKind(contentType) {

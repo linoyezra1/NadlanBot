@@ -7,6 +7,8 @@ test('parses channel choices', () => {
   assert.deepEqual(parseChannels('הכל'), ['facebook', 'instagram', 'tiktok']);
   assert.deepEqual(parseChannels('בלי טיקטוק'), ['facebook', 'instagram']);
   assert.deepEqual(parseChannels('רק פייסבוק'), ['facebook']);
+  assert.deepEqual(parseChannels('פרסם באינסטגרם'), ['instagram']);
+  assert.deepEqual(parseChannels('פרסם בטיקטוק'), ['tiktok']);
 });
 
 test('parses group choices', () => {

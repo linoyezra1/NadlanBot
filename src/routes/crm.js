@@ -6,6 +6,7 @@ import { brokerFormPage, connectPage, dashboardPage, leadPage, leadsPage, missin
 import { openBroker } from '../services/brokers.js';
 import { addPropertyFiles, createPropertyFromDraft, officeFields } from '../services/properties.js';
 import { gatewayConfigured, platformAuthUrl } from '../services/socialPublisher.js';
+import { publishPropertyChannel } from '../services/social/distribute.js';
 
 const router = express.Router();
 router.use(express.urlencoded({ extended: false }));
@@ -146,6 +147,26 @@ router.get('/b/:brokerId/properties/:code', wrap(async (req, res) => {
   }
   const [base, subtitle] = area(broker);
   res.type('html').send(propertyPage('', property, String(req.query.notice || ''), base, subtitle));
+}));
+
+router.post('/b/:brokerId/properties/:code/publish', wrap(async (req, res) => {
+  const platform = String(req.body?.platform || '');
+  const names = { facebook: 'פייסבוק', instagram: 'אינסטגרם', tiktok: 'טיקטוק' };
+  const broker = await getBroker(req.params.brokerId);
+  const property = await getProperty(req.params.code);
+  const back = `/b/${req.params.brokerId}/properties/${encodeURIComponent(req.params.code)}`;
+  if (!broker || !property || property.brokerId !== broker.id || !names[platform]) {
+    res.status(404).type('html').send(missingPage('', 'properties', 'הנכס לא נמצא', 'אין נכס עם הקוד הזה אצל המתווך.'));
+    return;
+  }
+  let notice = '';
+  try {
+    const outcome = await publishPropertyChannel(broker, property, platform);
+    notice = outcome.summary || `הפרסום ל${names[platform]} הסתיים.`;
+  } catch (error) {
+    notice = error.message || `הפרסום ל${names[platform]} נכשל.`;
+  }
+  res.redirect(303, `${back}?notice=${encodeURIComponent(notice.slice(0, 500))}`);
 }));
 
 router.post('/b/:brokerId/properties/:code/media', wrap(async (req, res) => {

@@ -114,6 +114,17 @@ export function propertiesPage(token, properties, query, base = '', subtitle = '
     ${cards}`, base, subtitle);
 }
 
+function publishButtons(token, base, code) {
+  if (!base) return '';
+  const action = href(token, `${base}/properties/${encodeURIComponent(code)}/publish`);
+  const button = (platform, label) => `<button class="primary" name="platform" value="${platform}" type="submit">${label}</button>`;
+  return `<form class="actions" method="post" action="${action}">
+    ${button('facebook', 'פרסם בפייסבוק')}
+    ${button('instagram', 'פרסם באינסטגרם')}
+    ${button('tiktok', 'פרסם בטיקטוק')}
+  </form>`;
+}
+
 export function propertyPage(token, property, notice = '', base = '', subtitle = 'האזור שלך') {
   const [statusLabel, tone] = propertyStatus(property.status);
   const bits = [
@@ -150,6 +161,7 @@ export function propertyPage(token, property, notice = '', base = '', subtitle =
       <div>
         <h1>${escapeHtml(property.code)}</h1>
         <p>${escapeHtml(addressLine(property))} ${pill(statusLabel, tone)}</p>
+        ${publishButtons(token, base, property.code)}
       </div>
       <div class="price">${escapeHtml(money(property.price))}</div>
     </header>

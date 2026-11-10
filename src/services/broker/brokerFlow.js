@@ -20,7 +20,7 @@ import {
   isListIntent,
   isNewPropertyIntent,
   parseAddGroup,
-  parsePublishCommand,
+  parsePublishRequest,
 } from '../../domain/intents.js';
 import { buttons, text } from '../../domain/replies.js';
 import { naturalWaLink, postWaMe } from '../../domain/waLink.js';
@@ -173,10 +173,11 @@ async function beginMarketing(conversation, flow) {
 async function askChannels(conversation, flow) {
   await saveFlow(conversation.id, { flowStep: 'channels', flow });
   return [
-    text('אפשר גם לכתוב שילוב, למשל "רק פייסבוק" או "פייסבוק וטיקטוק".'),
-    buttons('באילו ערוצים לפרסם?', [
-      { id: 'channels_all', title: 'כל הערוצים' },
-      { id: 'channels_no_tiktok', title: 'בלי טיקטוק' },
+    text('אפשר גם לכתוב "הכל", "רק אינסטגרם", או שילוב כמו "פייסבוק ואינסטגרם".'),
+    buttons('באיזה ערוץ לפרסם?', [
+      { id: 'channels_facebook', title: 'פרסם בפייסבוק' },
+      { id: 'channels_instagram', title: 'פרסם באינסטגרם' },
+      { id: 'channels_tiktok', title: 'פרסם בטיקטוק' },
     ]),
   ];
 }
@@ -293,7 +294,7 @@ async function step(broker, conversation, flow, rawText, buttonId) {
   if (conversation.flowStep === 'edit') return editStep(conversation, flow, rawText);
   if (conversation.flowStep === 'preview') return previewStep(broker, conversation, flow, rawText, buttonId);
   if (conversation.flowStep === 'publish_ask') return publishAskStep(conversation, flow, rawText, buttonId);
-  if (conversation.flowStep === 'marketing') return marketingStep(conversation, flow, rawText, buttonId);
+  if (conversation.flowStep === 'marketing') return marketingStep(broker, conversation, flow, rawText, buttonId);
   if (conversation.flowStep === 'channels') return channelsStep(broker, conversation, flow, rawText, buttonId);
   if (conversation.flowStep === 'groups') return groupsStep(broker, conversation, flow, rawText);
   return detailsStep(conversation, flow, rawText);
@@ -390,8 +391,11 @@ async function publishAskStep(conversation, flow, rawText, buttonId) {
   return [text('לפרסם עכשיו, או להשאיר את הנכס שמור לאחר כך?')];
 }
 
-async function marketingStep(conversation, flow, rawText, buttonId) {
-  if (buttonId === 'approve_copy' || isExactConfirm(rawText)) return askChannels(conversation, flow);
+async function marketingStep(broker, conversation, flow, rawText, buttonId) {
+  if (buttonId === 'approve_copy' || isExactConfirm(rawText)) {
+    if (flow.channels?.length) return afterChannels(broker, conversation, flow, flow.channels);
+    return askChannels(conversation, flow);
+  }
   if (rawText.length < 8) return [text('אפשר לאשר את הנוסח, או לשלוח נוסח חלופי מלא.')];
   flow.marketingText = rawText;
   await saveFlow(conversation.id, { flowStep: 'marketing', flow });
@@ -404,11 +408,16 @@ async function marketingStep(conversation, flow, rawText, buttonId) {
   ];
 }
 
+const CHANNEL_BUTTONS = {
+  channels_all: ['facebook', 'instagram', 'tiktok'],
+  channels_no_tiktok: ['facebook', 'instagram'],
+  channels_facebook: ['facebook'],
+  channels_instagram: ['instagram'],
+  channels_tiktok: ['tiktok'],
+};
+
 async function channelsStep(broker, conversation, flow, rawText, buttonId) {
-  let channels = [];
-  if (buttonId === 'channels_all') channels = ['facebook', 'instagram', 'tiktok'];
-  else if (buttonId === 'channels_no_tiktok') channels = ['facebook', 'instagram'];
-  else channels = parseChannels(rawText);
+  const channels = CHANNEL_BUTTONS[buttonId] || parseChannels(rawText);
   return afterChannels(broker, conversation, flow, channels);
 }
 
@@ -432,8 +441,16 @@ async function handleIdle(broker, event) {
     return { replies: started.replies, conversationId: started.conversation.id };
   }
   if (isListIntent(rawText)) return { replies: [text(await listText(broker))], conversationId: inbox.id };
-  const code = parsePublishCommand(rawText);
-  if (code) return startPublish(broker, code, inbox.id);
+  const request = parsePublishRequest(rawText);
+  if (request) return startPublish(broker, request.code, inbox.id, request.channels);
+  if (/^פרסם(?:ו)?\b/.test(rawText) && parseChannels(rawText).length) {
+    const channel = parseChannels(rawText)[0];
+    const name = channel === 'instagram' ? 'באינסטגרם' : channel === 'tiktok' ? 'בטיקטוק' : 'בפייסבוק';
+    return {
+      replies: [text(`כדי לפרסם ${name} צרף את קוד הנכס, למשל: פרסם ${name} APT-104`)],
+      conversationId: inbox.id,
+    };
+  }
   const group = parseAddGroup(rawText);
   if (group) return { replies: [text(await addGroup(broker, group))], conversationId: inbox.id };
   if (isListGroupsIntent(rawText)) return { replies: [text(await groupsText(broker))], conversationId: inbox.id };
@@ -455,12 +472,12 @@ async function handleIdle(broker, event) {
     };
   }
   return {
-    replies: [text('כדי לקלוט דירה כתוב דירה חדשה. אחרי שהנכס נשמר אפשר לפרסם: פרסם APT-104.')],
+    replies: [text('כדי לקלוט דירה כתוב דירה חדשה. לפרסום כתוב למשל: פרסם בפייסבוק APT-104, פרסם באינסטגרם APT-104, או פרסם בטיקטוק APT-104.')],
     conversationId: inbox.id,
   };
 }
 
-async function startPublish(broker, code, inboxId) {
+async function startPublish(broker, code, inboxId, channels = []) {
   const property = await findBrokerProperty(broker.id, code);
   if (!property) return { replies: [text(`לא מצאתי אצלך נכס ${code}.`)], conversationId: inboxId };
   const open = await findOnboarding(broker.id);
@@ -486,6 +503,7 @@ async function startPublish(broker, code, inboxId) {
     },
     propertyId: property.id,
     code: property.code,
+    channels,
   };
   const conversation = await prisma.conversation.create({
     data: {

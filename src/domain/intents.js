@@ -1,3 +1,5 @@
+import { parseChannels } from './channels.js';
+
 export function extractPropertyCode(text) {
   const match = String(text || '').match(/\b(APT-\d+)\b/i);
   return match ? match[1].toUpperCase() : null;
@@ -27,9 +29,16 @@ export function isListIntent(text) {
   return /הנכסים שלי|רשימת נכסים|הדירות שלי/.test(String(text || ''));
 }
 
+export function parsePublishRequest(text) {
+  const source = String(text || '').trim();
+  if (!/פרסם/.test(source)) return null;
+  const code = extractPropertyCode(source);
+  if (!code) return null;
+  return { code, channels: parseChannels(source) };
+}
+
 export function parsePublishCommand(text) {
-  const match = String(text || '').match(/פרסם(?:ו)?\s+(APT-\d+)/i);
-  return match ? match[1].toUpperCase() : null;
+  return parsePublishRequest(text)?.code || null;
 }
 
 export function isListGroupsIntent(text) {

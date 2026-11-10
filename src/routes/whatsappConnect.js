@@ -9,6 +9,7 @@ import { deliverResult } from '../services/deliverAll.js';
 import { handleIncoming } from '../services/router.js';
 import { pauseLeadChat } from '../services/whatsappMode.js';
 import { connectBrokerWhatsApp } from '../services/whatsappConnect.js';
+import { mobileOAuthUrl } from '../domain/whatsappOAuth.js';
 import { deletionStatus, parseSignedRequest, rememberDeletion } from '../services/facebookSignedRequest.js';
 
 const router = express.Router();
@@ -98,6 +99,7 @@ router.get('/connect', async (req, res) => {
     appId: config.metaAppId,
     configId: config.metaEmbeddedConfigId,
     brokerId: broker?.id || '',
+    version: config.graphVersion || 'v21.0',
     ready: Boolean(broker && config.metaAppId && config.metaEmbeddedConfigId),
   }));
 });
@@ -166,8 +168,9 @@ function facebookStatusPage(title, text) {
   return `<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><title>${escape(title)}</title><body style="font-family:Segoe UI,Arial,sans-serif"><h1>${escape(title)}</h1><p>${escape(text)}</p></body></html>`;
 }
 
-function connectPage({ appId, configId, brokerId, ready }) {
-  const payload = JSON.stringify({ appId, configId, brokerId, ready }).replace(/</g, '\\u003c');
+function connectPage({ appId, configId, brokerId, version, ready }) {
+  const payload = JSON.stringify({ appId, configId, brokerId, version, ready }).replace(/</g, '\\u003c');
+  const oauthFn = mobileOAuthUrl.toString();
   const close = '<' + '/script>';
   return `<!doctype html>
 <html lang="he" dir="rtl">
@@ -191,8 +194,59 @@ function connectPage({ appId, configId, brokerId, ready }) {
 </main>
 <script>
   const setup = ${payload};
-  if (window.location.search) history.replaceState(null, '', window.location.pathname);
+  const buildOAuthUrl = ${oauthFn};
+  const brokerKey = 'nadlanbot.whatsappBroker';
+  const returned = new URLSearchParams(window.location.search);
+  function rememberBroker(id) {
+    if (!id) return;
+    try { sessionStorage.setItem(brokerKey, id); } catch (error) {}
+  }
+  function storedBroker() {
+    try { return sessionStorage.getItem(brokerKey) || ''; } catch (error) { return ''; }
+  }
+  rememberBroker(setup.brokerId);
+  rememberBroker(returned.get('state'));
   let sessionInfo = {};
+  function currentBrokerId() {
+    return setup.brokerId || storedBroker() || returned.get('state') || '';
+  }
+  function finishConnect(code) {
+    const status = document.getElementById('status');
+    const brokerId = currentBrokerId();
+    if (!brokerId) {
+      status.textContent = 'פתחו שוב את החיבור מהאזור האישי של המתווך.';
+      return;
+    }
+    status.textContent = 'משלימים את החיבור...';
+    fetch('/api/whatsapp/connect-callback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code: code,
+        brokerId: brokerId,
+        wabaId: sessionInfo.waba_id || '',
+        phoneNumberId: sessionInfo.phone_number_id || ''
+      })
+    }).then((res) => res.json()).then((data) => {
+      if (!data.ok) {
+        status.textContent = data.error || 'החיבור נכשל';
+        return;
+      }
+      status.textContent = 'החיבור הושלם בהצלחה! אפליקציית הוואטסאפ נשארת פעילה כרגיל בנייד שלך.';
+      alert(status.textContent);
+      if (window.opener) window.close();
+    }).catch(() => {
+      status.textContent = 'החיבור נכשל';
+    });
+  }
+  if (returned.get('code') || returned.get('error') || returned.has('brokerId')) {
+    history.replaceState(null, '', window.location.pathname);
+  }
+  if (returned.get('error')) {
+    document.getElementById('status').textContent = 'החיבור בוטל.';
+  } else if (returned.get('code')) {
+    finishConnect(returned.get('code'));
+  }
   window.addEventListener('message', (event) => {
     if (!String(event.origin || '').endsWith('facebook.com')) return;
     try {
@@ -201,45 +255,41 @@ function connectPage({ appId, configId, brokerId, ready }) {
     } catch (error) {}
   });
   window.fbAsyncInit = function () {
-    FB.init({ appId: setup.appId, cookie: true, xfbml: false, version: 'v21.0' });
+    FB.init({ appId: setup.appId, cookie: true, xfbml: false, version: setup.version });
   };
+  function mobileBrowser() {
+    const ua = navigator.userAgent || '';
+    if (/Android|iPhone|iPad|iPod/i.test(ua)) return true;
+    return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+  }
   document.getElementById('connect').addEventListener('click', () => {
     const status = document.getElementById('status');
     if (!setup.ready) {
       status.textContent = 'חיבור Meta עדיין לא מוגדר בשרת.';
       return;
     }
-    const options = {
-      config_id: setup.configId,
-      response_type: 'code',
-      override_default_response_type: true,
-      extras: { setup: {}, featureType: 'whatsapp_business_app_onboarding' }
-    };
+    if (mobileBrowser() || typeof FB === 'undefined') {
+      window.location.assign(buildOAuthUrl({
+        appId: setup.appId,
+        version: setup.version,
+        configId: setup.configId,
+        redirectUri: window.location.origin + window.location.pathname,
+        brokerId: currentBrokerId()
+      }));
+      return;
+    }
     FB.login(function (response) {
       if (!(response.authResponse && response.authResponse.code)) {
         status.textContent = 'החיבור בוטל.';
         return;
       }
-      fetch('/api/whatsapp/connect-callback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          code: response.authResponse.code,
-          brokerId: setup.brokerId,
-          wabaId: sessionInfo.waba_id || '',
-          phoneNumberId: sessionInfo.phone_number_id || ''
-        })
-      }).then((res) => res.json()).then((data) => {
-        if (!data.ok) {
-          status.textContent = data.error || 'החיבור נכשל';
-          return;
-        }
-        alert('החיבור הושלם בהצלחה! אפליקציית הוואטסאפ נשארת פעילה כרגיל בנייד שלך.');
-        window.close();
-      }).catch(() => {
-        status.textContent = 'החיבור נכשל';
-      });
-    }, options);
+      finishConnect(response.authResponse.code);
+    }, {
+      config_id: setup.configId,
+      response_type: 'code',
+      override_default_response_type: true,
+      extras: { setup: {}, featureType: 'whatsapp_business_app_onboarding' }
+    });
   });
 ${close}
 <script async defer crossorigin="anonymous" src="https://connect.facebook.net/en_US/sdk.js">${close}
