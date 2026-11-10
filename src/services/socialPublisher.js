@@ -381,6 +381,14 @@ export function commentReplyPlan(body) {
   };
 }
 
+export const COMMENT_WEBHOOK_EVENTS = ['comment.received', 'account.connected', 'account.disconnected'];
+
+export function commentWebhookEvents(current = []) {
+  const allowed = new Set(COMMENT_WEBHOOK_EVENTS);
+  const kept = (current || []).filter((event) => allowed.has(event));
+  return [...new Set([...COMMENT_WEBHOOK_EVENTS, ...kept])];
+}
+
 export async function ensureCommentWebhook() {
   if (!gatewayConfigured()) return;
   const url = `${config.publicBaseUrl}/social-webhook`;
@@ -388,9 +396,10 @@ export async function ensureCommentWebhook() {
   const listed = await gateway('/webhooks/settings');
   const hooks = listed.webhooks || [];
   const ours = hooks.find((hook) => String(hook.url || '').replace(/\/$/, '') === url.replace(/\/$/, ''));
-  if (ours && (ours.events || []).includes('comment.received') && ours.isActive !== false) return;
+  const events = commentWebhookEvents(ours?.events);
+  const same = JSON.stringify([...(ours?.events || [])].sort()) === JSON.stringify([...events].sort());
+  if (ours && ours.isActive !== false && same) return;
   if (ours) {
-    const events = [...new Set([...(ours.events || []), 'comment.received'])];
     await gateway('/webhooks/settings', {
       method: 'PUT',
       body: { webhookId: ours._id || ours.id, events, isActive: true },
@@ -402,7 +411,7 @@ export async function ensureCommentWebhook() {
     body: {
       name: 'NadlanBot comments',
       url,
-      events: ['comment.received', 'profile.connected', 'account.connected', 'account.disconnected'],
+      events,
       ...(config.socialGatewayWebhookSecret ? { secret: config.socialGatewayWebhookSecret } : {}),
     },
   });

@@ -6,7 +6,7 @@ import { connectedPage } from '../src/domain/connectedPage.js';
 import { cloudinaryFolderName, signedCloudinaryParams } from '../src/services/storage.js';
 import { facebookSharerUrl, forwardCard, groupShareMessage } from '../src/domain/share.js';
 import { signaturesMatch } from '../src/routes/socialWebhook.js';
-import { commentReplyPlan, facebookPostExtras, selectPublicMedia, splitFeedMedia } from '../src/services/socialPublisher.js';
+import { commentReplyPlan, commentWebhookEvents, facebookPostExtras, selectPublicMedia, splitFeedMedia } from '../src/services/socialPublisher.js';
 import { publicCommentReply } from '../src/domain/waLink.js';
 
 test('keeps only public https media for the social gateway', () => {
@@ -121,6 +121,15 @@ test('builds a Facebook group sharer and a forward card', () => {
     'wa.me/12762762210?text=APT-104',
   );
   assert.equal(card, 'דירת 4 חדרים חדשה! 2.8 מיליון ₪. לפרטים ותמונות ישירות מהבוט: wa.me/12762762210?text=APT-104');
+});
+
+test('subscribes only to comment and account events Zernio accepts', () => {
+  assert.deepEqual(commentWebhookEvents(), ['comment.received', 'account.connected', 'account.disconnected']);
+  const events = commentWebhookEvents(['comment.received', 'profile.connected', 'mention.received', 'post.platform.published']);
+  assert.deepEqual(events, ['comment.received', 'account.connected', 'account.disconnected']);
+  assert.equal(events.includes('profile.connected'), false);
+  assert.equal(events.includes('mention.received'), false);
+  assert.equal(events.includes('post.platform.published'), false);
 });
 
 test('plans a public and a private reply for Instagram and Facebook comments', () => {
