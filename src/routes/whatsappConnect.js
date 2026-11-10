@@ -153,9 +153,11 @@ router.post('/api/whatsapp/connect-callback', express.json({ limit: '100kb' }), 
       brokerId: req.body?.brokerId,
       wabaId: req.body?.wabaId,
       phoneNumberId: req.body?.phoneNumberId,
+      redirectUri: req.body?.redirectUri,
     });
     res.json({ ok: true, brokerId: broker.id, connected: true });
   } catch (error) {
+    logger.error('whatsapp connect failed', error.message);
     res.status(error.status || 400).json({ error: error.message || 'החיבור נכשל' });
   }
 });
@@ -224,6 +226,7 @@ function connectPage({ appId, configId, brokerId, version, ready }) {
       body: JSON.stringify({
         code: code,
         brokerId: brokerId,
+        redirectUri: window.location.origin + window.location.pathname,
         wabaId: sessionInfo.waba_id || '',
         phoneNumberId: sessionInfo.phone_number_id || ''
       })

@@ -65,6 +65,24 @@ export function commentWaLink(property) {
   return `https://wa.me/${number}?text=${encodeURIComponent(commentInquiryText(property))}`;
 }
 
+export function genericCommentReply(authorName) {
+  const name = String(authorName || '').trim() || 'שלום';
+  const number = normalizePhone(config.whatsappDisplayNumber);
+  const link = number
+    ? `https://wa.me/${number}?text=${encodeURIComponent('היי, הגבתי לפוסט ואשמח לפרטים')}`
+    : '';
+  return `היי ${name}, כל הפרטים, המחיר והתמונות זמינים ישירות בוואטסאפ כאן:${link ? `\n${link}` : ''}`;
+}
+
+export function genericPrivateComment(authorName) {
+  const name = String(authorName || '').trim() || 'שלום';
+  const number = normalizePhone(config.whatsappDisplayNumber);
+  const link = number
+    ? `https://wa.me/${number}?text=${encodeURIComponent('היי, הגבתי לפוסט ואשמח לפרטים')}`
+    : '';
+  return [`היי ${name}, כל הפרטים והתמונות נמצאים בוואטסאפ.`, link].filter(Boolean).join('\n');
+}
+
 export function publicCommentReply(property, authorName) {
   const name = String(authorName || '').trim() || 'שלום';
   const deal = dealLabel(property);

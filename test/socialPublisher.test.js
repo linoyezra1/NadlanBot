@@ -6,7 +6,7 @@ import { connectedPage } from '../src/domain/connectedPage.js';
 import { cloudinaryFolderName, signedCloudinaryParams } from '../src/services/storage.js';
 import { facebookSharerUrl, forwardCard, groupShareMessage } from '../src/domain/share.js';
 import { signaturesMatch } from '../src/routes/socialWebhook.js';
-import { facebookPostExtras, selectPublicMedia, splitFeedMedia } from '../src/services/socialPublisher.js';
+import { commentReplyPlan, facebookPostExtras, selectPublicMedia, splitFeedMedia } from '../src/services/socialPublisher.js';
 import { publicCommentReply } from '../src/domain/waLink.js';
 
 test('keeps only public https media for the social gateway', () => {
@@ -82,11 +82,14 @@ test('signs Cloudinary uploads into the nadlanbot folder', () => {
 test('shows a finished connection screen', () => {
   const html = connectedPage({
     iconUrl: '/brand/icon.png',
-    whatsappUrl: 'https://wa.me/12762762210',
+    homeUrl: '/b/cmw95m9ky0000pj014nyfk9lq',
     username: 'hagit',
   });
   assert.match(html, /החיבור הושלם/);
-  assert.match(html, /חזרה לוואטסאפ/);
+  assert.match(html, /חזרה לאזור האישי/);
+  assert.match(html, /href="\/b\/cmw95m9ky0000pj014nyfk9lq"/);
+  assert.equal(html.includes('חזרה לוואטסאפ'), false);
+  assert.equal(html.includes('wa.me'), false);
   assert.match(html, /\/brand\/icon\.png/);
   assert.equal(html.includes('החיבור הסתיים'), false);
   assert.equal(html.includes('פייסבוק'), false);
@@ -118,4 +121,31 @@ test('builds a Facebook group sharer and a forward card', () => {
     'wa.me/12762762210?text=APT-104',
   );
   assert.equal(card, 'דירת 4 חדרים חדשה! 2.8 מיליון ₪. לפרטים ותמונות ישירות מהבוט: wa.me/12762762210?text=APT-104');
+});
+
+test('plans a public and a private reply for Instagram and Facebook comments', () => {
+  const instagram = commentReplyPlan({
+    account: { id: 'acc-1' },
+    comment: {
+      id: 'c-1',
+      platform: 'instagram',
+      platformPostId: 'media-9',
+      postId: 'zernio-9',
+      author: { name: 'דנה' },
+    },
+  });
+  assert.equal(instagram.publicPostId, 'zernio-9');
+  assert.equal(instagram.privatePostId, 'media-9');
+  assert.deepEqual(instagram.lookupIds, ['media-9', 'zernio-9']);
+  const own = commentReplyPlan({
+    account: { accountId: 'acc-1' },
+    comment: { id: 'c-2', platform: 'facebook', platformPostId: 'post-1', author: { isOwnAccount: true } },
+  });
+  assert.equal(own, null);
+  const tiktok = commentReplyPlan({
+    account: { id: 'acc-2' },
+    comment: { id: 'c-3', platform: 'tiktok', platformPostId: 'video-1', author: { username: 'dan' } },
+  });
+  assert.equal(tiktok.privatePostId, '');
+  assert.equal(tiktok.publicPostId, 'video-1');
 });

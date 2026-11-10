@@ -118,11 +118,33 @@ function publishButtons(token, base, code) {
   if (!base) return '';
   const action = href(token, `${base}/properties/${encodeURIComponent(code)}/publish`);
   const button = (platform, label) => `<button class="primary" name="platform" value="${platform}" type="submit">${label}</button>`;
-  return `<form class="actions" method="post" action="${action}">
+  const endScript = '<' + '/script>';
+  return `<form class="actions" id="publish-form" method="post" action="${action}">
     ${button('facebook', 'פרסם בפייסבוק')}
     ${button('instagram', 'פרסם באינסטגרם')}
     ${button('tiktok', 'פרסם בטיקטוק')}
-  </form>`;
+  </form>
+  <script>
+    const publishForm = document.getElementById('publish-form');
+    publishForm.addEventListener('click', (event) => {
+      const button = event.target.closest('button');
+      if (!button) return;
+      if (publishForm.dataset.busy === '1') {
+        event.preventDefault();
+        return;
+      }
+      publishForm.dataset.busy = '1';
+      for (const other of publishForm.querySelectorAll('button')) {
+        if (other !== button) other.disabled = true;
+      }
+      button.textContent = 'מפרסם...';
+    });
+    publishForm.addEventListener('submit', () => {
+      setTimeout(() => {
+        for (const button of publishForm.querySelectorAll('button')) button.disabled = true;
+      }, 0);
+    });
+  ${endScript}`;
 }
 
 export function propertyPage(token, property, notice = '', base = '', subtitle = 'האזור שלך') {

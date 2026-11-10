@@ -4,6 +4,7 @@ import { config, integrationWarnings } from './config.js';
 import { prisma } from './db.js';
 import { logger } from './logger.js';
 import { normalizePhone } from './domain/phone.js';
+import { ensureCommentWebhook } from './services/socialPublisher.js';
 
 async function waitForDb() {
   let lastError;
@@ -59,6 +60,7 @@ export async function startServer() {
   const app = createApp();
   const server = app.listen(config.port, () => {
     logger.info(`NadlanBot listening on ${config.port}`);
+    ensureCommentWebhook().catch((error) => logger.error('comment webhook setup failed', error.message));
   });
   return server;
 }

@@ -2,11 +2,11 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { config } from '../config.js';
 import { brandIconUrl, connectedPage } from '../domain/connectedPage.js';
-import { privateCommentMessage, publicCommentReply } from '../domain/waLink.js';
+import { genericCommentReply, genericPrivateComment, privateCommentMessage, publicCommentReply } from '../domain/waLink.js';
 import { prisma } from '../db.js';
 import { text } from '../domain/replies.js';
 import { logger } from '../logger.js';
-import { findPropertyForPost, readConnectSession, replyToComment, sendPrivateReply } from '../services/socialPublisher.js';
+import { commentReplyPlan, findPropertyForPost, readConnectSession, replyToComment, sendPrivateReply } from '../services/socialPublisher.js';
 import { deliver } from '../services/whatsapp.js';
 
 const router = express.Router();
@@ -29,7 +29,7 @@ function signaturesMatch(secret, rawBody, header) {
 
 function authorized(req) {
   if (!config.socialGatewayWebhookSecret) return config.nodeEnv !== 'production';
-  const header = req.get('x-zernio-signature') || req.get('x-late-signature') || '';
+  const header = String(req.get('x-zernio-signature') || req.get('x-late-signature') || '').replace(/^sha256=/i, '');
   return signaturesMatch(config.socialGatewayWebhookSecret, req.rawBody, header);
 }
 
@@ -105,37 +105,31 @@ function receive(req, res) {
 const NETWORK_LABELS = { facebook: 'פייסבוק', instagram: 'אינסטגרם', tiktok: 'טיקטוק' };
 
 async function answerComment(body) {
-  const comment = body.comment || {};
-  if (comment.platform !== 'facebook') return;
-  if (comment.author?.isOwnAccount === true) return;
-  const commentId = String(comment.id || '');
-  const accountId = body.account?.accountId || body.account?.id;
-  const platformPostId = comment.platformPostId || comment.post?.platformPostId || '';
-  const zernioPostId = comment.postId || comment.post?.id || '';
-  if (!commentId || !accountId) return;
-  const property = await findPropertyForPost([platformPostId, zernioPostId]);
-  if (!property) {
-    logger.warn('facebook comment did not match a property', platformPostId || zernioPostId);
-    return;
-  }
-  const authorName = comment.author?.name || comment.author?.username || '';
+  const plan = commentReplyPlan(body);
+  if (!plan) return;
+  const property = await findPropertyForPost(plan.lookupIds);
+  if (!property) logger.warn('comment did not match a property', plan.lookupIds.join(' ') || plan.commentId);
+  const publicMessage = property
+    ? publicCommentReply(property, plan.authorName)
+    : genericCommentReply(plan.authorName);
+  const privateMessage = property
+    ? privateCommentMessage(property, plan.authorName)
+    : genericPrivateComment(plan.authorName);
   const tasks = [];
-  const publicPostId = zernioPostId || platformPostId;
-  const privatePostId = platformPostId || zernioPostId;
-  if (publicPostId) {
+  if (plan.publicPostId) {
     tasks.push(replyToComment({
-      postId: publicPostId,
-      commentId,
-      accountId,
-      message: publicCommentReply(property, authorName),
+      postId: plan.publicPostId,
+      commentId: plan.commentId,
+      accountId: plan.accountId,
+      message: publicMessage,
     }).catch((error) => logger.error('public comment reply failed', error.message)));
   }
-  if (privatePostId) {
+  if (plan.privatePostId) {
     tasks.push(sendPrivateReply({
-      postId: privatePostId,
-      commentId,
-      accountId,
-      message: privateCommentMessage(property, authorName),
+      postId: plan.privatePostId,
+      commentId: plan.commentId,
+      accountId: plan.accountId,
+      message: privateMessage,
     }).catch((error) => logger.error('private comment reply failed', error.message)));
   }
   await Promise.all(tasks);
@@ -154,14 +148,26 @@ router.get('/connect/:token', (req, res) => {
   res.type('html').send(`<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><title>חיבור רשתות</title><body><h1>חברו את החשבונות</h1>${buttons}</body></html>`);
 });
 
+function brokerFromCookie(req) {
+  const header = String(req.get('cookie') || '');
+  const part = header.split(';').map((item) => item.trim()).find((item) => item.startsWith('nadlan_broker='));
+  if (!part) return '';
+  try {
+    return decodeURIComponent(part.slice('nadlan_broker='.length));
+  } catch {
+    return '';
+  }
+}
+
 function finishConnection(req, res) {
   const raw = String(req.params.platform || req.query.platform || '').toLowerCase();
   const platform = NETWORK_LABELS[raw] ? raw : '';
   const username = String(req.query.username || '').trim().slice(0, 80);
-  const number = String(config.whatsappDisplayNumber || '').replace(/\D/g, '');
+  const brokerId = String(req.params.brokerId || req.query.brokerId || brokerFromCookie(req) || '').trim();
+  const homeUrl = /^[a-z0-9]+$/i.test(brokerId) ? `/b/${brokerId}` : '';
   res.type('html').send(connectedPage({
     iconUrl: brandIconUrl(),
-    whatsappUrl: number ? `https://wa.me/${number}` : '',
+    homeUrl,
     username,
     platform,
   }));
@@ -169,6 +175,7 @@ function finishConnection(req, res) {
 
 router.get('/callback', finishConnection);
 router.get('/callback/:platform', finishConnection);
+router.get('/callback/:platform/:brokerId', finishConnection);
 
 router.get('/connected', (_req, res) => {
   res.redirect(302, '/social/callback');

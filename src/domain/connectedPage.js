@@ -21,7 +21,7 @@ function escapeHtml(value) {
 
 const NETWORK_LABELS = { facebook: 'פייסבוק', instagram: 'אינסטגרם', tiktok: 'טיקטוק' };
 
-export function connectedPage({ iconUrl = '', whatsappUrl = '', username = '', platform = '' } = {}) {
+export function connectedPage({ iconUrl = '', homeUrl = '', username = '', platform = '' } = {}) {
   const mark = iconUrl
     ? `<img src="${escapeHtml(iconUrl)}" alt="">`
     : '<span class="check" aria-hidden="true">✓</span>';
@@ -33,9 +33,9 @@ export function connectedPage({ iconUrl = '', whatsappUrl = '', username = '', p
   const account = username
     ? `<p class="account">החשבון ${escapeHtml(username)} נוסף.</p>`
     : '';
-  const back = whatsappUrl
-    ? `<a class="back" href="${escapeHtml(whatsappUrl)}">חזרה לוואטסאפ</a>`
-    : '<p class="back quiet">אפשר לחזור לוואטסאפ.</p>';
+  const back = homeUrl
+    ? `<a class="back" href="${escapeHtml(homeUrl)}">חזרה לאזור האישי</a>`
+    : '';
   return `<!doctype html>
 <html lang="he" dir="rtl">
 <head>
@@ -109,7 +109,6 @@ export function connectedPage({ iconUrl = '', whatsappUrl = '', username = '', p
       padding: 12px 22px;
       font-weight: 700;
     }
-    .quiet { color: #6f685f; }
   </style>
 </head>
 <body>

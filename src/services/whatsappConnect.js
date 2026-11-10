@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { logger } from '../logger.js';
 import { prisma } from '../db.js';
 
 function fail(message, status = 400) {
@@ -22,7 +23,9 @@ async function graph(path, { method = 'GET', token, body } = {}) {
   });
   const json = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw fail(json.error?.message || `Meta HTTP ${response.status}`, response.status >= 500 ? 502 : 400);
+    const message = json.error?.message || `Meta HTTP ${response.status}`;
+    logger.error('meta graph failed', method, String(path).split('?')[0], json.error?.code || response.status, message);
+    throw fail(message, response.status >= 500 ? 502 : 400);
   }
   return json;
 }
@@ -34,13 +37,14 @@ export function idsFromDebug(debug) {
   return { wabaId: management?.target_ids?.[0] || null };
 }
 
-export async function exchangeEmbeddedCode(code) {
+export async function exchangeEmbeddedCode(code, redirectUri = '') {
   if (!config.metaAppId || !config.metaAppSecret) throw fail('חיבור Meta עדיין לא מוגדר בשרת', 503);
   const params = new URLSearchParams({
     client_id: config.metaAppId,
     client_secret: config.metaAppSecret,
     code: String(code),
   });
+  if (redirectUri) params.set('redirect_uri', redirectUri);
   return graph(`oauth/access_token?${params.toString()}`);
 }
 
@@ -62,11 +66,11 @@ export async function resolveWhatsAppAccount({ token, wabaId, phoneNumberId }) {
   return { wabaId: waba, phoneNumberId: phone };
 }
 
-export async function connectBrokerWhatsApp({ code, brokerId, wabaId, phoneNumberId }) {
+export async function connectBrokerWhatsApp({ code, brokerId, wabaId, phoneNumberId, redirectUri }) {
   if (!code || !brokerId) throw fail('חסרים פרטי החיבור');
   const broker = await prisma.broker.findUnique({ where: { id: String(brokerId) } });
   if (!broker) throw fail('המתווך לא נמצא', 404);
-  const exchanged = await exchangeEmbeddedCode(code);
+  const exchanged = await exchangeEmbeddedCode(code, redirectUri);
   const token = exchanged.access_token;
   if (!token) throw fail('Meta לא החזיר טוקן');
   const ids = await resolveWhatsAppAccount({ token, wabaId, phoneNumberId });

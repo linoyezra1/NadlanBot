@@ -189,7 +189,7 @@ export async function platformAuthUrl(brokerId, platform) {
     throw error;
   }
   const profileId = await ensureSocialProfile(broker);
-  const redirectUrl = `${config.publicBaseUrl}/social/callback/${platform}`;
+  const redirectUrl = `${config.publicBaseUrl}/social/callback/${platform}/${encodeURIComponent(broker.id)}`;
   const query = new URLSearchParams({ profileId, redirect_url: redirectUrl });
   const json = await gateway(`/connect/${platform}?${query}`);
   if (!json.authUrl) throw new Error(`אין קישור חיבור ל-${platform}`);
@@ -304,7 +304,12 @@ export async function publishPropertyPost({ brokerId, propertyId, channels, capt
     data: {
       marketingText: content,
       isPublished,
-      publishedPostIds: ids,
+      publishedPostIds: {
+        ...(property.publishedPostIds && typeof property.publishedPostIds === 'object' && !Array.isArray(property.publishedPostIds)
+          ? property.publishedPostIds
+          : {}),
+        ...ids,
+      },
       facebookPostUrl: urls.facebook,
       instagramPostUrl: urls.instagram,
       tiktokPostUrl: urls.tiktok,
@@ -322,20 +327,85 @@ export async function findPropertyForPost(ids) {
   const keys = [...new Set((ids || []).map((id) => String(id || '').trim()).filter(Boolean))];
   if (!keys.length) return null;
   const publication = await prisma.publication.findFirst({
-    where: { postId: { in: keys } },
+    where: {
+      OR: [
+        { postId: { in: keys } },
+        ...keys.map((key) => ({ postUrl: { contains: key } })),
+      ],
+    },
     include: { property: true },
     orderBy: { createdAt: 'desc' },
   });
   if (publication?.property) return publication.property;
+  const byUrl = await prisma.property.findFirst({
+    where: {
+      OR: keys.flatMap((key) => [
+        { facebookPostUrl: { contains: key } },
+        { instagramPostUrl: { contains: key } },
+        { tiktokPostUrl: { contains: key } },
+      ]),
+    },
+    orderBy: { updatedAt: 'desc' },
+  });
+  if (byUrl) return byUrl;
   const rows = await prisma.property.findMany({
-    where: { isPublished: true },
     orderBy: { updatedAt: 'desc' },
     take: 200,
   });
   return rows.find((row) => {
     const values = Object.values(row.publishedPostIds || {}).map(String);
-    return keys.some((key) => values.includes(key));
+    const urls = [row.facebookPostUrl, row.instagramPostUrl, row.tiktokPostUrl].map(String);
+    return keys.some((key) => values.includes(key) || urls.some((url) => url.includes(key)));
   }) || null;
+}
+
+const COMMENT_PLATFORMS = new Set(['facebook', 'instagram', 'tiktok']);
+
+export function commentReplyPlan(body) {
+  const comment = body?.comment || {};
+  if (!COMMENT_PLATFORMS.has(comment.platform)) return null;
+  if (comment.author?.isOwnAccount === true) return null;
+  const commentId = String(comment.id || '');
+  const accountId = body.account?.accountId || body.account?.id || '';
+  if (!commentId || !accountId) return null;
+  const platformPostId = String(comment.platformPostId || comment.post?.platformPostId || '');
+  const zernioPostId = String(comment.postId || comment.post?.id || '');
+  return {
+    platform: comment.platform,
+    commentId,
+    accountId,
+    authorName: comment.author?.name || comment.author?.username || '',
+    lookupIds: [platformPostId, zernioPostId].filter(Boolean),
+    publicPostId: zernioPostId || platformPostId,
+    privatePostId: comment.platform === 'tiktok' ? '' : (platformPostId || zernioPostId),
+  };
+}
+
+export async function ensureCommentWebhook() {
+  if (!gatewayConfigured()) return;
+  const url = `${config.publicBaseUrl}/social-webhook`;
+  if (!url.startsWith('https://')) return;
+  const listed = await gateway('/webhooks/settings');
+  const hooks = listed.webhooks || [];
+  const ours = hooks.find((hook) => String(hook.url || '').replace(/\/$/, '') === url.replace(/\/$/, ''));
+  if (ours && (ours.events || []).includes('comment.received') && ours.isActive !== false) return;
+  if (ours) {
+    const events = [...new Set([...(ours.events || []), 'comment.received'])];
+    await gateway('/webhooks/settings', {
+      method: 'PUT',
+      body: { webhookId: ours._id || ours.id, events, isActive: true },
+    });
+    return;
+  }
+  await gateway('/webhooks/settings', {
+    method: 'POST',
+    body: {
+      name: 'NadlanBot comments',
+      url,
+      events: ['comment.received', 'profile.connected', 'account.connected', 'account.disconnected'],
+      ...(config.socialGatewayWebhookSecret ? { secret: config.socialGatewayWebhookSecret } : {}),
+    },
+  });
 }
 
 export function replyToComment({ postId, commentId, accountId, message }) {

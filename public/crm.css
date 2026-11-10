@@ -171,6 +171,10 @@ button, input { font: inherit; }
   padding: 10px 16px;
   cursor: pointer;
 }
+button.primary:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .connect-list { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
 .alert { background: var(--hot-soft); color: var(--hot); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; }
