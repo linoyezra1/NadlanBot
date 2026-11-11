@@ -36,6 +36,7 @@ model Broker {
   facebookGroups FacebookGroup[]
   conversations  Conversation[]
   socialPosts   SocialPost[]
+  chatMessages  BrokerChatMessage[]
 
   @@index([status])
 }
@@ -228,6 +229,18 @@ model SocialComment {
   post              SocialPost @relation(fields: [socialPostId], references: [id], onDelete: Cascade)
 
   @@index([socialPostId])
+}
+
+model BrokerChatMessage {
+  id        String   @id @default(cuid())
+  brokerId  String
+  sender    String
+  text      String   @db.Text
+  mediaUrl  String?
+  createdAt DateTime @default(now())
+  broker    Broker   @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+
+  @@index([brokerId, createdAt])
 }
 
 model InboundEvent {

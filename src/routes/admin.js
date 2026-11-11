@@ -4,6 +4,7 @@ import { integrationStatus } from '../config.js';
 import { normalizePhone } from '../domain/phone.js';
 import { hebrewPlatform, hebrewPublicationError, hebrewStatus } from '../domain/publicationText.js';
 import { prisma } from '../db.js';
+import { backfillBrokerChat, brokerChatPage } from '../services/brokerChat.js';
 import { openBroker } from '../services/brokers.js';
 import { deliverResult } from '../services/deliverAll.js';
 import { handleIncoming } from '../services/router.js';
@@ -97,8 +98,8 @@ async function render(token, result, notice = '') {
   ${resultHtml}
   <section>
     <h2>מתווכים</h2>
-    <table><tr><th>שם</th><th>טלפון</th><th>סטטוס</th><th>הנתיב</th></tr>
-    ${brokers.map((broker) => `<tr><td>${escapeHtml(broker.fullName)}</td><td>${escapeHtml(broker.phoneNumber)}</td><td>${escapeHtml(broker.status)}</td><td><a href="/b/${escapeHtml(broker.id)}">/b/${escapeHtml(broker.id)}</a></td></tr>`).join('') || '<tr><td colspan="4">אין מתווכים</td></tr>'}
+    <table><tr><th>שם</th><th>טלפון</th><th>סטטוס</th><th>הנתיב</th><th>שיחה</th></tr>
+    ${brokers.map((broker) => `<tr><td>${escapeHtml(broker.fullName)}</td><td>${escapeHtml(broker.phoneNumber)}</td><td>${escapeHtml(broker.status)}</td><td><a href="/b/${escapeHtml(broker.id)}">/b/${escapeHtml(broker.id)}</a></td><td><a href="/admin/brokers/${escapeHtml(broker.id)}/chat">צפה בשיחה</a></td></tr>`).join('') || '<tr><td colspan="5">אין מתווכים</td></tr>'}
     </table>
   </section>
   <section>
@@ -123,6 +124,49 @@ async function render(token, result, notice = '') {
 </body>
 </html>`;
 }
+
+router.get('/admin/brokers/:brokerId/chat', async (req, res, next) => {
+  try {
+    const broker = await prisma.broker.findUnique({ where: { id: req.params.brokerId } });
+    if (!broker) {
+      res.status(404).type('html').send('<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><body><p>המתווך לא נמצא.</p></body></html>');
+      return;
+    }
+    await backfillBrokerChat(broker.id);
+    const [brokers, messages, open] = await Promise.all([
+      prisma.broker.findMany({
+        orderBy: { fullName: 'asc' },
+        include: {
+          chatMessages: { orderBy: { createdAt: 'desc' }, take: 1, select: { createdAt: true } },
+          conversations: {
+            where: { role: 'broker' },
+            orderBy: { updatedAt: 'desc' },
+            take: 1,
+            select: { updatedAt: true },
+          },
+        },
+      }),
+      prisma.brokerChatMessage.findMany({
+        where: { brokerId: broker.id },
+        orderBy: { createdAt: 'desc' },
+        take: 400,
+      }),
+      prisma.conversation.findFirst({
+        where: { brokerId: broker.id, role: 'broker', status: 'onboarding' },
+        orderBy: { updatedAt: 'desc' },
+        select: { flowStep: true },
+      }),
+    ]);
+    res.type('html').send(brokerChatPage({
+      broker,
+      brokers,
+      messages: messages.slice().reverse(),
+      step: open?.flowStep || '',
+    }));
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/admin', async (req, res, next) => {
   try {

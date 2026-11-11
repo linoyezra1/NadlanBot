@@ -3,6 +3,7 @@ import { text } from '../domain/replies.js';
 import { prisma } from '../db.js';
 import { logger } from '../logger.js';
 import { handleBroker } from './broker/brokerFlow.js';
+import { rememberBrokerChat } from './brokerChat.js';
 import { rememberOutbound } from './conversationStore.js';
 import { handleLead } from './leads/leadFlow.js';
 
@@ -68,6 +69,7 @@ export async function handleIncoming(event) {
       } catch (error) {
         logger.error('failed to store outbound message', error);
       }
+      await rememberBrokerChat(event, result);
       return {
         replies: result.replies || [],
         notifications: result.notifications || [],
@@ -76,11 +78,13 @@ export async function handleIncoming(event) {
       };
     } catch (error) {
       logger.error('conversation failed', error);
-      return {
+      const fallback = {
         replies: [text('נתקלתי בתקלה רגעית. אפשר לנסות שוב בעוד כמה שניות.')],
         notifications: [],
         conversationId: null,
       };
+      await rememberBrokerChat(event, fallback);
+      return fallback;
     }
   });
 }
