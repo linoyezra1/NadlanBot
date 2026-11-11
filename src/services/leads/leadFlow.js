@@ -2,8 +2,9 @@ import { toPublicCard } from '../../domain/card.js';
 import { clientProperty } from '../../domain/disclosure.js';
 import { formatHotLead, formatLeadUpdate } from '../../domain/hotLead.js';
 import { formatPhone } from '../../crm/format.js';
-import { text } from '../../domain/replies.js';
-import { image, video } from '../../domain/replies.js';
+import { image, text, video } from '../../domain/replies.js';
+import { stripBotVoice } from '../../domain/waLink.js';
+import { commentAnswer } from '../../domain/details.js';
 import { hotLeadSignal } from '../../domain/intents.js';
 import { matchMedia } from '../../domain/tags.js';
 import { prisma } from '../../db.js';
@@ -156,9 +157,9 @@ async function runModel({ conversation, property, card, event }) {
     const message = completion.choices[0]?.message;
     if (!message) break;
     if (!message.tool_calls?.length) {
-      const reply = (message.content || '').trim() || (handed
+      const reply = stripBotVoice(message.content || '') || (handed
         ? 'תודה, הפרטים אצל המתווך והוא יחזור אליך.'
-        : 'אני כאן. אפשר לשאול על הנכס או לבקש תמונות.');
+        : 'לשאלות נוספות כתוב כאן. לתיאום סיור, איך קוראים לך ומתי נוח?');
       if (message.content) console.log('AI response generated for:', event.name || conversation.contactName || '');
       if (!handed) await saveFlow(conversation.id, { flow, propertyId: property.id });
       return { replies: [...outboundMedia, text(reply)], notifications, conversationId: conversation.id };
@@ -330,6 +331,10 @@ export async function handleLead(event) {
   }
 
   const card = toPublicCard(clientProperty(property, 'private'));
+  const direct = commentAnswer(card, event.text || '', '');
+  if (direct) {
+    return { replies: [text(direct)], notifications: [], conversationId: conversation.id };
+  }
   const answer = async () => {
     const userText = event.text || '';
     console.log('Calling OpenAI with prompt for:', userText);

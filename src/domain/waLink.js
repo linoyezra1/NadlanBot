@@ -83,22 +83,55 @@ export function commentWaLink(property) {
   return `https://wa.me/${number}?text=${encodeURIComponent(commentInquiryText(property))}`;
 }
 
+export const TOUR_LINE = 'לעוד פרטים ולתיאום סיור בוואטסאפ:';
+
+export function commentCloser(link) {
+  return link ? `${TOUR_LINE}\n${link}` : 'לעוד פרטים ולתיאום סיור בוואטסאפ.';
+}
+
+export function asChatMessage(text) {
+  const lines = String(text || '').split('\n').map((line) => line.trim()).filter(Boolean);
+  if (lines.length <= 1) return lines[0] || '';
+  const sentence = lines.map((line) => line.replace(/[.,]$/, '')).join(', ');
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+}
+
+export function stripBotVoice(text) {
+  return String(text || '')
+    .replace(/אם צריך(?: משהו)?[,،]?\s*אני כאן(?: בשבילך)?[.!]*/g, '')
+    .replace(/אני כאן בשבילך[.!]*/g, '')
+    .replace(/לא תוכ(?:ל|לו) לפנות למתווך(?: בוואטסאפ| בווטסאפ| בוואצאפ)?[.!]*/g, '')
+    .replace(/(?:אי אפשר|אין אפשרות|לא ניתן) לפנות למתווך(?: בוואטסאפ| בווטסאפ| בוואצאפ)?[.!]*/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export function finishCommentReply(answer, link) {
+  const cleaned = asChatMessage(stripBotVoice(answer)
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line && !/^ל(?:שאלות נוספות|עוד פרטים|תמונות נוספות)/.test(line) && !/wa\.me\//.test(line))
+    .join('\n'));
+  const closer = commentCloser(link);
+  return cleaned ? `${cleaned}\n${closer}` : closer;
+}
+
+function genericCommentLink() {
+  const number = normalizePhone(config.whatsappDisplayNumber);
+  if (!number) return '';
+  return `https://wa.me/${number}?text=${encodeURIComponent('היי, הגבתי לפוסט ואשמח לפרטים')}`;
+}
+
 export function genericCommentReply(authorName) {
   const name = String(authorName || '').trim() || 'שלום';
-  const number = normalizePhone(config.whatsappDisplayNumber);
-  const link = number
-    ? `https://wa.me/${number}?text=${encodeURIComponent('היי, הגבתי לפוסט ואשמח לפרטים')}`
-    : '';
-  return `היי ${name}, כל הפרטים, המחיר והתמונות זמינים ישירות בוואטסאפ כאן:${link ? `\n${link}` : ''}`;
+  return [`היי ${name}.`, commentCloser(genericCommentLink())].join('\n');
 }
 
 export function genericPrivateComment(authorName) {
   const name = String(authorName || '').trim() || 'שלום';
-  const number = normalizePhone(config.whatsappDisplayNumber);
-  const link = number
-    ? `https://wa.me/${number}?text=${encodeURIComponent('היי, הגבתי לפוסט ואשמח לפרטים')}`
-    : '';
-  return [`היי ${name}, כל הפרטים והתמונות נמצאים בוואטסאפ.`, link].filter(Boolean).join('\n');
+  return [`היי ${name}.`, commentCloser(genericCommentLink())].join('\n');
 }
 
 export function publicCommentReply(property, authorName) {
@@ -106,8 +139,7 @@ export function publicCommentReply(property, authorName) {
   const deal = dealLabel(property);
   const place = placePhrase(property);
   const about = [deal ? `הדירה ${deal}` : 'הדירה', place].filter(Boolean).join(' ');
-  const link = commentWaLink(property);
-  return `היי ${name}, ראיתי שהגבת לפוסט של ${about} 🏡\nכל הפרטים, המחיר והתמונות זמינים ישירות בוואטסאפ כאן:${link ? `\n${link}` : ''}`;
+  return [`היי ${name}, ${about}.`, commentCloser(commentWaLink(property))].join('\n');
 }
 
 export function privateCommentMessage(property, authorName) {
@@ -116,13 +148,9 @@ export function privateCommentMessage(property, authorName) {
   const place = placePhrase(property);
   const about = [deal ? `הדירה ${deal}` : 'הדירה', place].filter(Boolean).join(' ');
   const rooms = property?.rooms != null ? `${property.rooms} חדרים` : '';
-  const price = property?.price != null ? `מחיר: ${new Intl.NumberFormat('he-IL').format(property.price)} ₪` : '';
-  const link = commentWaLink(property);
-  return [
-    `היי ${name}, הנה ${about}.`,
-    [rooms, price].filter(Boolean).join(' · '),
-    link ? `לפרטים ותמונות בוואטסאפ:\n${link}` : '',
-  ].filter(Boolean).join('\n');
+  const price = property?.price != null ? `במחיר ${new Intl.NumberFormat('he-IL').format(property.price)} ₪` : '';
+  const sentence = [`היי ${name}`, [about, rooms, price].filter(Boolean).join(', ')].filter(Boolean).join(', ');
+  return [`${sentence}.`, commentCloser(commentWaLink(property))].join('\n');
 }
 
 export function forwardWaMe(code) {

@@ -1,7 +1,7 @@
 import { DISCLOSURE_FIELDS, disclosureMode } from '../../domain/disclosure.js';
 import { planPosts } from '../../domain/plan.js';
 import { TIKTOK_CRM_NOTICE, TIKTOK_WA_LINE } from '../../domain/tiktokVideo.js';
-import { forwardCard, groupShareMessage } from '../../domain/share.js';
+import { groupShareMessage, originalPostMessage } from '../../domain/share.js';
 import { clickToWhatsAppLink, naturalWaLink, shortClickToWhatsAppLink } from '../../domain/waLink.js';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
@@ -78,15 +78,16 @@ async function execute(item, accounts, caption, propertyCode) {
   throw new Error('ערוץ לא נתמך');
 }
 
-function gatewayMessages(results, property) {
+export function brokerPublishMessages(results) {
   const facebook = results.find((item) => item.platform === 'facebook' && item.postUrl);
   const share = facebook ? groupShareMessage(facebook.postUrl) : null;
   const published = results.some((item) => item.status === 'published' || item.status === 'processing');
-  if (!share && !published) return null;
+  const links = originalPostMessage(results);
+  if (!share && !published && !links) return null;
   const messages = [];
   if (share) messages.push(share);
-  else messages.push('הפרסום עלה לחשבונות שחוברו.');
-  messages.push(forwardCard(property));
+  else if (published) messages.push('הפרסום עלה לחשבונות שחוברו.');
+  if (links) messages.push(links);
   const also = [];
   if (results.some((item) => item.platform === 'instagram' && item.status === 'published')) also.push('אינסטגרם');
   if (results.some((item) => item.platform === 'tiktok' && (item.status === 'published' || item.status === 'processing'))) also.push('טיקטוק');
@@ -149,7 +150,7 @@ async function distributeThroughGateway({ broker, property, channels, groups, ca
     waLink,
     results,
     summary: summarizeResults(results, waLink),
-    messages: gatewayMessages(results, property),
+    messages: brokerPublishMessages(results),
   };
 }
 

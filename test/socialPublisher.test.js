@@ -4,7 +4,7 @@ import test from 'node:test';
 import { config, zernioApiRoot } from '../src/config.js';
 import { connectedPage } from '../src/domain/connectedPage.js';
 import { cloudinaryFolderName, signedCloudinaryParams } from '../src/services/storage.js';
-import { facebookSharerUrl, forwardCard, groupShareMessage } from '../src/domain/share.js';
+import { facebookSharerUrl, groupShareMessage, originalPostMessage } from '../src/domain/share.js';
 import { acceptsWebhook, signaturesMatch } from '../src/routes/socialWebhook.js';
 import { commentReplyPlan, commentWebhookEvents, commentWebhookUpdate, facebookPostExtras, selectPublicMedia, splitFeedMedia } from '../src/services/socialPublisher.js';
 import { publicCommentReply } from '../src/domain/waLink.js';
@@ -37,6 +37,8 @@ test('keeps only public https media for the social gateway', () => {
   assert.match(extras.facebookSettings.carouselCards[0].link, /^https:\/\/wa\.me\/12762762210\?text=/);
   assert.match(extras.firstComment, /wa\.me\/12762762210/);
   const reply = publicCommentReply(property, 'דנה');
+  assert.match(reply, /לעוד פרטים ולתיאום סיור בוואטסאפ/);
+  assert.equal(reply.includes('אני כאן בשבילך'), false);
   assert.match(reply, /היי דנה/);
   assert.match(reply, /להשכרה/);
   assert.match(reply, /כצנלסון/);
@@ -111,7 +113,7 @@ test('uses the Zernio host and keeps the v1 prefix', () => {
   assert.equal(zernioApiRoot('https://zernio.com/api'), 'https://zernio.com/api/v1');
 });
 
-test('builds a Facebook group sharer and a forward card', () => {
+test('builds a Facebook group sharer and the original post link', () => {
   const postUrl = 'https://facebook.com/hagit.nadlan/posts/12345678';
   const share = groupShareMessage(postUrl);
   assert.match(share, /הפוסט עלה בהצלחה לעמוד שלך/);
@@ -120,11 +122,16 @@ test('builds a Facebook group sharer and a forward card', () => {
     facebookSharerUrl(postUrl),
     `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(postUrl)}`,
   );
-  const card = forwardCard(
-    { rooms: 4, price: 2800000, code: 'APT-104' },
-    'wa.me/12762762210?text=APT-104',
-  );
-  assert.equal(card, 'דירת 4 חדרים חדשה! 2.8 מיליון ₪. לפרטים ותמונות ישירות מהבוט: wa.me/12762762210?text=APT-104');
+  const links = originalPostMessage([
+    { platform: 'facebook', status: 'published', postUrl },
+    { platform: 'instagram', status: 'published', postUrl: 'https://instagram.com/p/abc' },
+    { platform: 'tiktok', status: 'failed', postUrl: 'https://tiktok.com/nope' },
+  ]);
+  assert.match(links, /הקישור לפוסט המקורי/);
+  assert.match(links, new RegExp(postUrl));
+  assert.match(links, /אינסטגרם: https:\/\/instagram.com\/p\/abc/);
+  assert.equal(links.includes('wa.me'), false);
+  assert.equal(links.includes('ישירות מהבוט'), false);
 });
 
 test('subscribes only to comment and account events Zernio accepts', () => {

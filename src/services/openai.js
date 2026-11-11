@@ -1,14 +1,14 @@
 import OpenAI from 'openai';
 import { config } from '../config.js';
 import { fallbackMarketing, polishListing, spokenProperty } from '../domain/marketing.js';
-import { naturalWaLink, postWaMe } from '../domain/waLink.js';
+import { finishCommentReply, naturalWaLink, postWaMe, withoutBuildingNumber } from '../domain/waLink.js';
 import { SYSTEM_PROMPT_POST_GENERATION } from './socialPublisher.js';
 import { hotLeadSignal } from '../domain/intents.js';
 import { highlightsFromTranscript } from '../domain/hotLead.js';
 import { logger } from '../logger.js';
 import { clientProperty, parkingPhrase } from '../domain/disclosure.js';
-import { withoutBuildingNumber } from '../domain/waLink.js';
 import { INQUIRY_SYSTEM_PROMPT } from './leads/prompt.js';
+import { commentAnswer } from '../domain/details.js';
 
 const REPLY_MODEL = 'gpt-4o-mini';
 const INQUIRY_TIMEOUT_MS = 8000;
@@ -72,15 +72,11 @@ export function withDeadline(work, ms = INQUIRY_TIMEOUT_MS) {
   return Promise.race([Promise.resolve().then(work), timeout]).finally(() => clearTimeout(timer));
 }
 
-function ensureWaLink(answer, waLink) {
-  const text = String(answer || '').trim();
-  if (!text) return '';
-  if (!waLink || text.includes('wa.me/')) return text;
-  return `${text}\n${waLink}`;
-}
 
 export async function generateInquiryReply({ authorName, question, property, waLink, recent, complete, timeoutMs = INQUIRY_TIMEOUT_MS } = {}) {
   const userText = question || '';
+  const direct = commentAnswer(property, userText, waLink);
+  if (direct) return direct;
   console.log('Calling OpenAI with prompt for:', userText);
   if (!complete && !hasOpenAI()) {
     console.error('OpenAI failed, falling back:', 'OPENAI_API_KEY is empty');
@@ -91,7 +87,12 @@ export async function generateInquiryReply({ authorName, question, property, waL
     const response = await withDeadline(() => (complete || defaultInquiryComplete)(
       inquiryMessages({ authorName, question, property, waLink, recent }),
     ), timeoutMs);
-    const answer = ensureWaLink(response?.choices?.[0]?.message?.content, waLink);
+    const raw = response?.choices?.[0]?.message?.content;
+    if (!String(raw || '').trim()) {
+      console.error('OpenAI failed, falling back:', 'empty response');
+      return null;
+    }
+    const answer = finishCommentReply(raw, waLink);
     if (!answer) {
       console.error('OpenAI failed, falling back:', 'empty response');
       return null;

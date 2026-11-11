@@ -4,6 +4,7 @@ import { hotLeadSignal } from '../../domain/intents.js';
 import { image, text, video } from '../../domain/replies.js';
 import { matchMedia } from '../../domain/tags.js';
 import { withoutBuildingNumber } from '../../domain/waLink.js';
+import { commentAnswer, isDetailsAsk } from '../../domain/details.js';
 
 function isSideQuestion(message) {
   return /[?]/.test(message) || /מחיר|חדר|איפה|כתובת|קומה|תמונ|מ"ר|מ״ר/.test(message);
@@ -18,8 +19,8 @@ function answerQuestion(card, message) {
     bits.push(card.rooms != null ? `בנכס ${card.rooms} חדרים` : HIDDEN_ANSWER);
   }
   if (/איפה|כתובת|מיקום|שכונ|עיר/.test(message)) {
-    const where = [withoutBuildingNumber(card.address), card.neighborhood, card.city].filter(Boolean).join(', ');
-    bits.push(where ? `הנכס נמצא ב${where}` : HIDDEN_ANSWER);
+    const place = [withoutBuildingNumber(card.address), card.neighborhood, card.city].filter(Boolean).join(', ');
+    bits.push(place ? `הכתובת היא ${place}` : HIDDEN_ANSWER);
   }
   if (/קומה/.test(message)) {
     bits.push(card.floor ? `הקומה היא ${card.floor}` : HIDDEN_ANSWER);
@@ -38,7 +39,7 @@ function answerQuestion(card, message) {
   }
   if (bits.length) return [...new Set(bits)].join('\n');
   const summary = formatPublicSummary(card);
-  return `היי, אני כאן עם הדירה. ${summary}\nאפשר לשאול על מחיר, חדרים, מיקום או לבקש תמונות.`;
+  return summary || 'אפשר לשאול על המחיר, החדרים או המיקום, או לכתוב מתי נוח לסיור.';
 }
 
 function mediaReply(item) {
@@ -56,6 +57,11 @@ export function fallbackLeadTurn({ card, incoming, state, recentLeadTexts = [] }
     time: state?.time || null,
     mediaSends: state?.mediaSends || 0,
   };
+
+  if (isDetailsAsk(message) && next.step === 'chat') {
+    const facts = commentAnswer(card, message, '');
+    if (facts) return { replies: [text(facts)], state: next, handoff: null };
+  }
 
   if (next.step === 'name') {
     if (isSideQuestion(message)) {
