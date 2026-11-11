@@ -1,12 +1,13 @@
 import OpenAI from 'openai';
 import { config } from '../config.js';
-import { ensureMarketingLink, fallbackMarketing } from '../domain/marketing.js';
+import { fallbackMarketing, polishListing, spokenProperty } from '../domain/marketing.js';
 import { naturalWaLink, postWaMe } from '../domain/waLink.js';
 import { SYSTEM_PROMPT_POST_GENERATION } from './socialPublisher.js';
 import { hotLeadSignal } from '../domain/intents.js';
 import { highlightsFromTranscript } from '../domain/hotLead.js';
 import { logger } from '../logger.js';
 import { clientProperty, parkingPhrase } from '../domain/disclosure.js';
+import { withoutBuildingNumber } from '../domain/waLink.js';
 import { INQUIRY_SYSTEM_PROMPT } from './leads/prompt.js';
 
 const REPLY_MODEL = 'gpt-4o-mini';
@@ -36,7 +37,7 @@ export function propertyFacts(property) {
     property.sizeSqm != null ? `${property.sizeSqm} מ"ר` : null,
     property.vacancyDate ? `פינוי ${property.vacancyDate}` : null,
   ].filter(Boolean);
-  const address = [property.address, property.neighborhood, property.city].filter(Boolean).join(', ');
+  const address = [withoutBuildingNumber(property.address), property.neighborhood, property.city].filter(Boolean).join(', ');
   return {
     listingType: property.listingType || null,
     price: property.price ?? null,
@@ -178,9 +179,9 @@ function publicFields(fields) {
 }
 
 export async function generateMarketing(fields, waLink, broker) {
-  const visible = clientProperty(fields, 'post') || fields;
+  const visible = spokenProperty(clientProperty(fields, 'post') || fields);
   const link = waLink || naturalWaLink(visible) || postWaMe(fields?.code);
-  const fallback = ensureMarketingLink(fallbackMarketing(visible, link, broker), link);
+  const fallback = polishListing(fallbackMarketing(visible, link, broker));
   if (!hasOpenAI()) return fallback;
   try {
     const response = await client().chat.completions.create({
@@ -194,14 +195,18 @@ export async function generateMarketing(fields, waLink, broker) {
             property: Object.fromEntries(Object.entries(publicFields(visible)).filter(([, value]) => value != null && value !== '')),
             broker: {
               name: broker?.businessName || broker?.fullName || null,
-              phone: broker?.phoneNumber || null,
+              phone: (() => {
+                const digits = String(broker?.phoneNumber || '').replace(/\D/g, '');
+                if (digits.startsWith('972') && digits.length >= 12) return `0${digits.slice(3)}`;
+                return digits || null;
+              })(),
             },
-            waLink: link,
+            style: 'כמו הדוגמאות. רק מה שנמסר. בלי אין, בלי נקודתיים, בלי קישור.',
           }),
         },
       ],
     });
-    return ensureMarketingLink(response.choices[0]?.message?.content || fallback, link);
+    return polishListing(response.choices[0]?.message?.content || fallback);
   } catch (error) {
     logger.warn('marketing generation failed', error.message);
     return fallback;

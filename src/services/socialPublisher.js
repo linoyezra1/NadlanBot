@@ -1,6 +1,7 @@
 import { isPublicHttpUrl } from '../domain/channels.js';
 import { tiktokVideoSkip, tiktokVideoUrl } from '../domain/tiktokVideo.js';
 import { clickToWhatsAppLink, naturalWaLink, postWaMe, streetLabel } from '../domain/waLink.js';
+import { polishListing } from '../domain/marketing.js';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 
@@ -71,25 +72,47 @@ function withFacebookExtras(platforms, property, images) {
 }
 
 export const SYSTEM_PROMPT_POST_GENERATION = `
-אתה עוזר שיווקי בכיר למתווכי נדל"ן באזור המרכז/בת ים.
-תפקידך לייצר פוסט לפייסבוק ואינסטגרם מתוך פרטי הנכס.
+אתה כותב פוסט נדל"ן בעברית, כמו מתווך שמפרסם בפייסבוק. זה לא טופס.
 
-חוקי הסגנון:
-1. שורות קצרות וקולעות עם רווח בין שורה לשורה. בלי פסקאות ארוכות ובלי מילים מנופחות.
-2. כותרת ברורה: "להשכרה {חדרים} חדרים ב{פרויקט/עיר}" או "למכירה ב{עיר}".
-3. ציין במדויק: כתובת, קומה, מפרט (מרפסת, חניה, מחסן, ממ"ד), שדרוגים מיוחדים ומוצרי חשמל אם קיימים.
-4. אם נמסר מחיר, ציין אותו ואת הביטוי "לרציניים בלבד" (להשכרה) או "למביני עניין" (למכירה). אם המחיר לא נמסר, אל תכתוב מחיר ואל תציין שהוא חסר.
-5. סיים עם פרטי התקשרות של המתווך וקישור הוואטסאפ שנמסר. אל תכתוב קוד נכס.
-אל תמציא עובדות שלא נמסרו. אל תזכיר את בעל הנכס. שדה שלא נמסר לא מופיע בפוסט.
+כותבים רק עובדות שנמסרו. הדוגמאות הן צורת כתיבה בלבד, ואסור להעתיק מהן כתובת, מחיר או טלפון.
+
+צורה:
+השורה הראשונה היא להשכרה או למכירה, מספר החדרים, והעיר או הפרויקט.
+אחר כך שורות קצרות: רחוב, קומה, מ"ר, ומה שיש בדירה.
+מחיר בלי נקודתיים, למשל: מחיר 6500 ש"ח לרציניים בלבד
+בסוף: לפרטים, שם המתווך, וטלפון מקומי שמתחיל ב-0.
+
+אסור:
+לא לכתוב כתובת:, קומה:, גודל:, חניה:, טלפון: או כל שדה עם נקודתיים.
+לא לכתוב כן, יש או אין. מה שאין בדירה לא נכתב בכלל.
+לא להמציא מחסן, נוף, חשמל, מעלית או חניה.
+לא קישור, לא "לחץ כאן", לא מספר שמתחיל ב-972, לא קוד נכס, ולא שם של בעל הדירה.
+מספר בניין לא נכתב אף פעם. רק שם הרחוב, בלי 10 ובלי שום מספר בית.
+
+דוגמאות לסגנון:
+להשכרה 3 חדרים
+ברחוב כצנלסון
+דירה חדשה מהקבלן
+ממ"ד מרפסת שמש
+חניה בטאבו
+מחיר 6500 ש"ח
+לפרטים חגית נדל"ן
+0506962827
+
+להשכרה 5 חדרים בגן העיר בת ים
+מרווחת מחסן נוף לים
+מרפסת שמש ממ"ד
+לפרטים חגית חזן
+0506962827
 `.trim();
 
 export function composeCaption(caption, property) {
   const subject = property && typeof property === 'object' ? property : { code: property };
+  const body = polishListing(caption);
   const link = naturalWaLink(subject) || postWaMe(subject.code) || clickToWhatsAppLink(subject.code);
-  const body = String(caption || '').trim();
-  if (!link) return body;
-  if (body.includes(link)) return body;
-  return body ? `${body}\n\n${link}` : link;
+  if (!body) return link || '';
+  if (!link || body.includes('wa.me/') || /0\d{8,9}/.test(body)) return body;
+  return `${body}\n\n${link}`;
 }
 
 async function gateway(pathname, { method = 'GET', body, headers } = {}) {

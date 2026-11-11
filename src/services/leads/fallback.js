@@ -3,6 +3,7 @@ import { HIDDEN_ANSWER } from '../../domain/disclosure.js';
 import { hotLeadSignal } from '../../domain/intents.js';
 import { image, text, video } from '../../domain/replies.js';
 import { matchMedia } from '../../domain/tags.js';
+import { withoutBuildingNumber } from '../../domain/waLink.js';
 
 function isSideQuestion(message) {
   return /[?]/.test(message) || /מחיר|חדר|איפה|כתובת|קומה|תמונ|מ"ר|מ״ר/.test(message);
@@ -17,7 +18,7 @@ function answerQuestion(card, message) {
     bits.push(card.rooms != null ? `בנכס ${card.rooms} חדרים` : HIDDEN_ANSWER);
   }
   if (/איפה|כתובת|מיקום|שכונ|עיר/.test(message)) {
-    const where = [card.address, card.neighborhood, card.city].filter(Boolean).join(', ');
+    const where = [withoutBuildingNumber(card.address), card.neighborhood, card.city].filter(Boolean).join(', ');
     bits.push(where ? `הנכס נמצא ב${where}` : HIDDEN_ANSWER);
   }
   if (/קומה/.test(message)) {

@@ -1,6 +1,7 @@
 import { toPublicCard } from '../../domain/card.js';
 import { clientProperty } from '../../domain/disclosure.js';
-import { formatHotLead } from '../../domain/hotLead.js';
+import { formatHotLead, formatLeadUpdate } from '../../domain/hotLead.js';
+import { formatPhone } from '../../crm/format.js';
 import { text } from '../../domain/replies.js';
 import { image, video } from '../../domain/replies.js';
 import { hotLeadSignal } from '../../domain/intents.js';
@@ -359,7 +360,9 @@ export async function handleLead(event) {
   const noteText = (event.text || '').trim();
   const alreadyNotified = (turn.notifications || []).length > 0;
   if (alreadyHot && !alreadyNotified && property.broker?.phoneNumber && await brokerShouldHear(noteText)) {
-    const note = `עדכון מהליד ${conversation.contactName || event.from} על ${property.code}:\n${noteText}`;
+    const name = conversation.contactName || event.name || '';
+    const phone = formatPhone(conversation.leadPhone || event.from);
+    const note = formatLeadUpdate({ name, phone, text: noteText });
     turn.notifications = [...(turn.notifications || []), { to: property.broker.phoneNumber, replies: [text(note)] }];
   }
   return turn;

@@ -22,11 +22,29 @@ export function postWaMe(code) {
   return `wa.me/${number}?text=פרטים_על_${code}`;
 }
 
+export function withoutBuildingNumber(address) {
+  const text = String(address || '').trim();
+  if (!text) return '';
+  const month = /^ב(?:מאי|נובמבר|אפריל|אוקטובר|ספטמבר|אוגוסט|ינואר|פברואר|מרץ|יוני|יולי|דצמבר|שבט|אדר|ניסן|אייר|סיון|תמוז|אב|אלול|תשרי|חשון|כסלו|טבת)$/;
+  const house = /^\d{1,4}[א-ת]?(?:[/\\-]\d{1,4})?$/;
+  const kept = [];
+  const parts = text.split(/\s+/);
+  for (let i = 0; i < parts.length; i += 1) {
+    const comma = parts[i].endsWith(',');
+    const token = parts[i].replace(/,$/, '');
+    const next = (parts[i + 1] || '').replace(/,$/, '');
+    if (/^(?:דירה|כניסה|בניין|בנין|מספר|מס['׳]?)$/.test(token) && house.test(next)) {
+      i += 1;
+      continue;
+    }
+    if (house.test(token) && kept.length > 0 && !month.test(next)) continue;
+    kept.push(comma ? `${token},` : token);
+  }
+  return kept.join(' ').replace(/\s+,/g, ',').replace(/,\s*$/, '').replace(/\s{2,}/g, ' ').trim();
+}
+
 export function streetLabel(address) {
-  return String(address || '')
-    .replace(/^רחוב\s+/, '')
-    .replace(/\s+\d+\s*[א-ת]?\s*$/u, '')
-    .trim();
+  return withoutBuildingNumber(address).replace(/^רחוב\s+/, '').trim();
 }
 
 export function dealLabel(property) {

@@ -11,6 +11,14 @@ export function formatHotLead({ code, address, neighborhood, city, leadName, lea
   ].filter(Boolean).join('\n');
 }
 
+export function formatLeadUpdate({ name, phone, text }) {
+  const who = [name, phone].filter(Boolean).join(' ');
+  const quote = String(text || '').trim();
+  const lines = ['*עדכון*', '', `הלקוח ${who}`.trim()];
+  if (quote) lines.push(`"${quote}"`);
+  return lines.join('\n');
+}
+
 export function highlightsFromTranscript(messages) {
   return (messages || [])
     .filter((message) => message.sender === 'lead' && message.text)

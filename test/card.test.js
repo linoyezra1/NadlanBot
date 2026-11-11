@@ -18,12 +18,14 @@ test('public card never includes the owner', () => {
   assert.equal(JSON.stringify(card).includes('ישראל'), false);
   assert.equal(JSON.stringify(card).includes('972501234567'), false);
   assert.equal(card.owner, undefined);
+  assert.equal(card.address, 'רחוב הרצל');
 });
 
 test('broker preview keeps owner details marked private', () => {
   const card = formatDraftCard({ ownerName: 'ישראל כהן', ownerPhone: '972501234567', address: 'רחוב הרצל 10' }, 'APT-101');
   assert.match(card, /ישראל כהן/);
   assert.match(card, /חסוי/);
+  assert.match(card, /רחוב הרצל 10/);
   assert.equal(card.includes('יש לשים תמונות'), false);
   assert.match(formatDraftCard({ address: 'רחוב הרצל 10' }, 'טיוטה', { hasMedia: false }), /יש לשים תמונות/);
 });

@@ -1,4 +1,5 @@
 import { parkingPhrase } from './disclosure.js';
+import { withoutBuildingNumber } from './waLink.js';
 
 export function formatPrice(price) {
   if (price == null || price === '') return 'לא צוין';
@@ -35,7 +36,7 @@ export function toPublicCard(property) {
   return {
     code: property.code,
     listingType: property.listingType || null,
-    address: property.address || null,
+    address: withoutBuildingNumber(property.address) || null,
     city: property.city || null,
     neighborhood: property.neighborhood || null,
     rooms: property.rooms ?? null,

@@ -48,3 +48,9 @@ test('collects name and time before the hot lead handoff', () => {
   assert.equal(booked.handoff.leadName, 'דנה לוי');
   assert.equal(booked.handoff.preferredTime, 'מחר ב-17:00');
 });
+
+test('an address answer never includes the building number', () => {
+  const turn = fallbackLeadTurn({ card, incoming: 'מה הכתובת?', state: { step: 'chat' } });
+  assert.match(turn.replies[0].text, /הרצל/);
+  assert.equal(/\b10\b/.test(turn.replies[0].text), false);
+});
