@@ -2,7 +2,8 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { config } from '../config.js';
 import { brandIconUrl, connectedPage } from '../domain/connectedPage.js';
-import { genericCommentReply, genericPrivateComment, privateCommentMessage, publicCommentReply } from '../domain/waLink.js';
+import { commentWaLink, genericCommentReply, genericPrivateComment, privateCommentMessage, publicCommentReply } from '../domain/waLink.js';
+import { generateInquiryReply } from '../services/openai.js';
 import { prisma } from '../db.js';
 import { text } from '../domain/replies.js';
 import { logger } from '../logger.js';
@@ -123,12 +124,19 @@ async function answerComment(body) {
   }
   const property = await findPropertyForPost(plan.lookupIds);
   if (!property) logger.warn('comment did not match a property', plan.lookupIds.join(' ') || plan.commentId);
-  const publicMessage = property
+  const waLink = property ? commentWaLink(property) : '';
+  const aiReply = await generateInquiryReply({
+    authorName: plan.authorName,
+    question: plan.text,
+    property,
+    waLink,
+  });
+  const publicMessage = aiReply || (property
     ? publicCommentReply(property, plan.authorName)
-    : genericCommentReply(plan.authorName);
-  const privateMessage = property
+    : genericCommentReply(plan.authorName));
+  const privateMessage = aiReply || (property
     ? privateCommentMessage(property, plan.authorName)
-    : genericPrivateComment(plan.authorName);
+    : genericPrivateComment(plan.authorName));
   const tasks = [];
   if (plan.publicPostId) {
     tasks.push(replyToComment({

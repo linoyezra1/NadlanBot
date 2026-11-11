@@ -1,4 +1,4 @@
-import { toPublicCard, formatPublicSummary } from '../../domain/card.js';
+import { toPublicCard } from '../../domain/card.js';
 import { formatHotLead } from '../../domain/hotLead.js';
 import { text } from '../../domain/replies.js';
 import { image, video } from '../../domain/replies.js';
@@ -128,7 +128,12 @@ async function runFallback({ conversation, property, card, event }) {
 async function runModel({ conversation, property, card, event }) {
   const history = await recentMessages(conversation.id, ['lead', 'bot'], 20);
   const messages = [{ role: 'system', content: leadSystemPrompt(card) }];
-  if (hotLeadSignal(event.text)) {
+  if (conversation.flowStep === 'handed_off' || conversation.status === 'converted_hot_lead') {
+    messages.push({
+      role: 'system',
+      content: 'הליד כבר נמסר למתווך. אל תבקש שוב שם או שעה, ואל תחזור על משפט שהפרטים הועברו. ענה רק על השאלה או על הנכס החדש.',
+    });
+  } else if (hotLeadSignal(event.text)) {
     messages.push({
       role: 'system',
       content: 'ההודעה האחרונה מביעה רצון לסיור או לשיחה עם המתווך. אם חסר שם מלא או שעה, בקש רק את מה שחסר. אם שניהם כבר נאמרו, קרא ל-submit_hot_lead.',
@@ -152,6 +157,7 @@ async function runModel({ conversation, property, card, event }) {
       const reply = (message.content || '').trim() || (handed
         ? 'תודה, הפרטים אצל המתווך והוא יחזור אליך.'
         : 'אני כאן. אפשר לשאול על הנכס או לבקש תמונות.');
+      if (message.content) console.log('AI response generated for:', event.name || conversation.contactName || '');
       if (!handed) await saveFlow(conversation.id, { flow, propertyId: property.id });
       return { replies: [...outboundMedia, text(reply)], notifications, conversationId: conversation.id };
     }
@@ -228,30 +234,14 @@ async function runTool(call, context) {
   return { data: { ok: false, error: 'Unknown tool' } };
 }
 
-function openingReplies(property) {
-  const card = toPublicCard(property);
-  const where = [property.address, property.city].filter(Boolean).join(', ');
-  const summary = formatPublicSummary(card);
-  const lines = [
-    where ? `הנה הדירה: ${where}` : 'הנה הדירה.',
-    summary,
-    'אפשר לשאול על המחיר, החדרים או המיקום, או לבקש תמונות נוספות.',
-  ].filter(Boolean);
-  const media = Array.isArray(property.media) ? property.media : [];
-  const photos = media.filter((item) => item.mediaType !== 'video' && item.cloudUrl).slice(0, 3);
-  const clips = photos.length ? photos : media.filter((item) => item.cloudUrl).slice(0, 1);
-  return [
-    text(lines.join('\n')),
-    ...clips.map((item) => (item.mediaType === 'video'
-      ? video(item.cloudUrl, item.caption || '')
-      : image(item.cloudUrl, item.caption || ''))),
-  ];
-}
-
-async function attachProperty(conversation, property) {
+async function attachProperty(conversation, property, { fresh = false } = {}) {
   const flow = readFlow(conversation);
   flow.pendingPropertyIds = [];
-  const saved = await saveFlow(conversation.id, { flow, propertyId: property.id });
+  const saved = await saveFlow(conversation.id, {
+    flow,
+    propertyId: property.id,
+    ...(fresh ? { status: 'active', flowStep: 'chat' } : {}),
+  });
   if (property.brokerId && saved.brokerId !== property.brokerId) {
     return prisma.conversation.update({
       where: { id: conversation.id },
@@ -259,6 +249,15 @@ async function attachProperty(conversation, property) {
     });
   }
   return saved;
+}
+
+async function switchIfNewInterest(conversation, incoming, brokerId) {
+  const match = await matchPropertyFromText(incoming, brokerId);
+  if (match.kind !== 'one') return conversation;
+  if (!match.hints?.code && !match.hints?.street && !match.hints?.city) return conversation;
+  const next = match.properties[0];
+  if (!next || next.id === conversation.propertyId) return conversation;
+  return attachProperty(conversation, next, { fresh: true });
 }
 
 function clarify() {
@@ -296,8 +295,7 @@ export async function handleLead(event) {
         .filter(Boolean);
       const chosen = chooseProperty(incoming, ordered);
       if (chosen) {
-        conversation = await attachProperty(conversation, chosen);
-        return { replies: openingReplies(chosen), notifications: [], conversationId: conversation.id };
+        conversation = await attachProperty(conversation, chosen, { fresh: true });
       }
     }
     const match = await matchPropertyFromText(incoming, event.brokerId || null);
@@ -308,14 +306,18 @@ export async function handleLead(event) {
         conversationId: conversation.id,
       };
     }
-    if (match.kind === 'one') {
-      conversation = await attachProperty(conversation, match.properties[0]);
-      return { replies: openingReplies(match.properties[0]), notifications: [], conversationId: conversation.id };
+    if (match.kind === 'one' && !conversation.propertyId) {
+      conversation = await attachProperty(conversation, match.properties[0], { fresh: true });
     }
-    if (match.kind === 'many') return rememberChoices(conversation, match);
-    return { replies: [clarify()], notifications: [], conversationId: conversation.id };
+    if (!conversation.propertyId) {
+      if (match.kind === 'many') return rememberChoices(conversation, match);
+      return { replies: [clarify()], notifications: [], conversationId: conversation.id };
+    }
+  } else {
+    conversation = await switchIfNewInterest(conversation, incoming, event.brokerId || null);
   }
 
+  const alreadyHot = conversation.flowStep === 'handed_off' || conversation.status === 'converted_hot_lead';
   const property = await prisma.property.findFirst({
     where: { id: conversation.propertyId, status: 'active' },
     include: { media: true, broker: true },
@@ -326,29 +328,27 @@ export async function handleLead(event) {
   }
 
   const card = toPublicCard(property);
-  if (conversation.flowStep === 'handed_off' || conversation.status === 'converted_hot_lead') {
-    const replies = [text('המתווך כבר קיבל את הפרטים ויחזור אליך. אם בא לך להוסיף משהו לקראת השיחה, כתוב לי ואעביר.')];
-    const notifications = [];
-    if ((event.text || '').trim().length > 12) {
-      const note = `עדכון מהליד ${conversation.contactName || event.from} על ${property.code}:\n${event.text.trim()}`;
-      replies[0] = text('העברתי את העדכון למתווך.');
-      if (property.broker?.phoneNumber) notifications.push({ to: property.broker.phoneNumber, replies: [text(note)] });
+  const answer = async () => {
+    if (!hasOpenAI()) return runFallback({ conversation, property, card, event });
+    try {
+      return await runModel({ conversation, property, card, event });
+    } catch (error) {
+      const fresh = await prisma.conversation.findUnique({ where: { id: conversation.id } });
+      if (!alreadyHot && fresh?.status === 'converted_hot_lead') {
+        return {
+          replies: [text('הפרטים אצל המתווך והוא יחזור אליך.')],
+          notifications: [],
+          conversationId: conversation.id,
+        };
+      }
+      return runFallback({ conversation: fresh || conversation, property, card, event });
     }
-    return { replies, notifications, conversationId: conversation.id };
+  };
+  const turn = await answer();
+  const noteText = (event.text || '').trim();
+  if (alreadyHot && noteText.length > 12 && property.broker?.phoneNumber) {
+    const note = `עדכון מהליד ${conversation.contactName || event.from} על ${property.code}:\n${noteText}`;
+    turn.notifications = [...(turn.notifications || []), { to: property.broker.phoneNumber, replies: [text(note)] }];
   }
-
-  if (!hasOpenAI()) return runFallback({ conversation, property, card, event });
-  try {
-    return await runModel({ conversation, property, card, event });
-  } catch (error) {
-    const fresh = await prisma.conversation.findUnique({ where: { id: conversation.id } });
-    if (fresh?.status === 'converted_hot_lead') {
-      return {
-        replies: [text('הפרטים אצל המתווך והוא יחזור אליך.')],
-        notifications: [],
-        conversationId: conversation.id,
-      };
-    }
-    return runFallback({ conversation: fresh || conversation, property, card, event });
-  }
+  return turn;
 }

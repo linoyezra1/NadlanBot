@@ -31,6 +31,14 @@ test('sends the kitchen photo and refuses to reveal the owner', () => {
   assert.match(owner.replies[0].text, /לא נמסרים/);
 });
 
+test('answers a new question after handoff without asking for the name again', () => {
+  const turn = fallbackLeadTurn({ card, incoming: 'כמה עולה?', state: { step: 'handed_off', name: 'דנה לוי', time: 'מחר' } });
+  assert.equal(turn.handoff, null);
+  assert.equal(turn.state.step, 'handed_off');
+  assert.match(turn.replies[0].text, /2,450,000/);
+  assert.equal(turn.replies[0].text.includes('איך קוראים'), false);
+});
+
 test('collects name and time before the hot lead handoff', () => {
   const asked = fallbackLeadTurn({ card, incoming: 'אני רוצה לבוא לראות', state: { step: 'chat' } });
   assert.equal(asked.state.step, 'name');

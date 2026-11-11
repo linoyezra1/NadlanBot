@@ -92,6 +92,10 @@ export function fallbackLeadTurn({ card, incoming, state, recentLeadTexts = [] }
     };
   }
 
+  if (next.step === 'handed_off') {
+    return { replies: [text(answerQuestion(card, message))], state: next, handoff: null };
+  }
+
   if (/בעל הנכס|הבעלים|מי המוכר|שם הבעלים/.test(message)) {
     return {
       replies: [text('פרטי בעל הנכס לא נמסרים בשיחה. התיאום נעשה מול המתווך.')],

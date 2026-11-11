@@ -5,13 +5,98 @@ import { naturalWaLink, postWaMe } from '../domain/waLink.js';
 import { SYSTEM_PROMPT_POST_GENERATION } from './socialPublisher.js';
 import { highlightsFromTranscript } from '../domain/hotLead.js';
 import { logger } from '../logger.js';
+import { INQUIRY_SYSTEM_PROMPT } from './leads/prompt.js';
+
+const INQUIRY_TIMEOUT_MS = 3000;
 
 export function hasOpenAI() {
-  return Boolean(config.openaiApiKey);
+  return Boolean(process.env.OPENAI_API_KEY || config.openaiApiKey);
 }
 
 function client() {
-  return new OpenAI({ apiKey: config.openaiApiKey, timeout: 20000 });
+  return new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY || config.openaiApiKey,
+    timeout: 20000,
+  });
+}
+
+export function propertyFacts(property) {
+  if (!property) return null;
+  const amenities = property.amenities || {};
+  const advantages = [
+    property.featuresText,
+    amenities.parking === true ? 'חניה' : null,
+    amenities.elevator === true ? 'מעלית' : null,
+    amenities.balcony === true ? 'מרפסת' : null,
+    amenities.mamad === true ? 'ממ"ד' : null,
+    property.sizeSqm != null ? `${property.sizeSqm} מ"ר` : null,
+    property.vacancyDate ? `פינוי ${property.vacancyDate}` : null,
+  ].filter(Boolean);
+  const address = [property.address, property.neighborhood, property.city].filter(Boolean).join(', ');
+  return {
+    listingType: property.listingType || null,
+    price: property.price ?? null,
+    rooms: property.rooms ?? null,
+    floor: property.floor || null,
+    address: address || null,
+    advantages,
+  };
+}
+
+export function inquiryMessages({ authorName, question, property, waLink, recent = [] }) {
+  return [
+    { role: 'system', content: INQUIRY_SYSTEM_PROMPT },
+    ...recent.filter((line) => line?.role && line?.content).slice(-6),
+    {
+      role: 'user',
+      content: JSON.stringify({
+        authorName: authorName || null,
+        question: question || '',
+        property: propertyFacts(property),
+        waLink: waLink || null,
+      }),
+    },
+  ];
+}
+
+export function withDeadline(work, ms = INQUIRY_TIMEOUT_MS) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('openai timeout')), ms);
+  });
+  return Promise.race([Promise.resolve().then(work), timeout]).finally(() => clearTimeout(timer));
+}
+
+function ensureWaLink(answer, waLink) {
+  const text = String(answer || '').trim();
+  if (!text) return '';
+  if (!waLink || text.includes('wa.me/')) return text;
+  return `${text}\n${waLink}`;
+}
+
+export async function generateInquiryReply({ authorName, question, property, waLink, recent, complete, timeoutMs = INQUIRY_TIMEOUT_MS } = {}) {
+  if (!complete && !hasOpenAI()) return null;
+  try {
+    const response = await withDeadline(() => (complete || defaultInquiryComplete)(
+      inquiryMessages({ authorName, question, property, waLink, recent }),
+    ), timeoutMs);
+    const answer = ensureWaLink(response?.choices?.[0]?.message?.content, waLink);
+    if (!answer) return null;
+    console.log('AI response generated for:', authorName);
+    return answer;
+  } catch (error) {
+    logger.warn('inquiry reply failed', error.message);
+    return null;
+  }
+}
+
+function defaultInquiryComplete(messages) {
+  return client().chat.completions.create({
+    model: config.openaiModel,
+    temperature: 0.5,
+    max_tokens: 180,
+    messages,
+  }, { timeout: INQUIRY_TIMEOUT_MS });
 }
 
 function publicFields(fields) {
@@ -118,5 +203,5 @@ export async function completeLeadTurn({ messages, tools }) {
     temperature: 0.4,
     messages,
     tools,
-  });
+  }, { timeout: INQUIRY_TIMEOUT_MS });
 }
