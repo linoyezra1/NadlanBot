@@ -2,8 +2,9 @@ import express from 'express';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { dashboardData, getBroker, getLead, getProperty, listLeads, listProperties } from '../crm/data.js';
+import { backfillSocialPosts, listSocialPosts } from '../services/socialFeed.js';
 import { readMultipart, uploadFailure } from '../crm/multipart.js';
-import { brokerFormPage, calendarPage, connectPage, dashboardPage, leadPage, leadsPage, missingPage, propertiesPage, propertyFormPage, propertyPage } from '../crm/render.js';
+import { brokerFormPage, calendarPage, connectPage, dashboardPage, leadPage, leadsPage, missingPage, propertiesPage, propertyFormPage, propertyPage, socialFeedPage } from '../crm/render.js';
 import { openBroker } from '../services/brokers.js';
 import { addPropertyFiles, createPropertyFromDraft, officeFields, saveCardSettings } from '../services/properties.js';
 import { gatewayConfigured, platformAuthUrl } from '../services/socialPublisher.js';
@@ -104,6 +105,7 @@ router.get('/b/:brokerId', wrap(async (req, res) => {
     return;
   }
   const [base, subtitle] = area(broker);
+  await backfillSocialPosts(broker.id);
   const data = await dashboardData(broker.id);
   data.broker = { isWhatsAppConnected: broker.isWhatsAppConnected };
   res.type('html').send(dashboardPage('', data, base, subtitle));
@@ -145,11 +147,13 @@ router.get('/b/:brokerId/properties', wrap(async (req, res) => {
   }
   const query = String(req.query.q || '');
   const [base, subtitle] = area(broker);
+  await backfillSocialPosts(broker.id);
   res.type('html').send(propertiesPage('', await listProperties(query, broker.id), query, base, subtitle));
 }));
 
 router.get('/b/:brokerId/properties/:code', wrap(async (req, res) => {
   const broker = await getBroker(req.params.brokerId);
+  if (broker) await backfillSocialPosts(broker.id);
   const property = await getProperty(req.params.code);
   if (!broker || !property || property.brokerId !== broker.id) {
     res.status(404).type('html').send(missingPage('', 'properties', 'הנכס לא נמצא', 'אין נכס עם הקוד הזה אצל המתווך.'));
@@ -213,6 +217,19 @@ router.post('/b/:brokerId/properties/:code/media', wrap(async (req, res) => {
   const notice = mediaNotice(media) || (payload.files.length ? '' : 'לא נבחר קובץ.');
   const query = notice ? `?notice=${encodeURIComponent(notice)}` : '';
   res.redirect(303, `/b/${req.params.brokerId}/properties/${encodeURIComponent(property.code)}${query}`);
+}));
+
+router.get('/b/:brokerId/social-feed', wrap(async (req, res) => {
+  const broker = await getBroker(req.params.brokerId);
+  if (!broker) {
+    res.status(404).type('html').send(missingPage('', 'feed', 'המתווך לא נמצא', 'אין נתיב עם המזהה הזה.'));
+    return;
+  }
+  const propertyCode = String(req.query.property || '');
+  const [base, subtitle] = area(broker);
+  await backfillSocialPosts(broker.id);
+  const posts = await listSocialPosts(broker.id, propertyCode);
+  res.type('html').send(socialFeedPage('', posts, base, subtitle, propertyCode));
 }));
 
 router.get('/b/:brokerId/calendar', wrap(async (req, res) => {

@@ -14,7 +14,9 @@ import {
   tagLabel,
 } from './format.js';
 import { DISCLOSURE_FIELDS, disclosureMode, parkingPhrase } from '../domain/disclosure.js';
+import { hebrewPlatform, publicationLine } from '../domain/publicationText.js';
 import { naturalWaLink } from '../domain/waLink.js';
+import { leadContact } from '../services/socialFeed.js';
 import { layout } from './layout.js';
 
 function photo(url, label) {
@@ -57,11 +59,12 @@ function propertyCard(property, token, base = '') {
         <div>${escapeHtml(property.address || place(property) || 'כתובת לא הוזנה')}</div>
         <div class="muted">${escapeHtml(place(property))}</div>
         <div class="facts">${bits.map((bit) => `<span class="chip">${escapeHtml(bit)}</span>`).join('')}</div>
-        <div class="muted">${leads.length} לידים${hot ? ` · ${hot} חמים` : ''}</div>
+        <div class="muted">${leads.length} לידים${hot ? ` · ${hot} חמים` : ''}${(property._count?.socialPosts || 0) ? ` · ${property._count.socialPosts} פורסמו` : ''}</div>
       </div>
     </a>
     <div class="card-actions">
       <a class="ghost" href="${shareHref(property)}" target="_blank" rel="noopener">שתף בוואטסאפ</a>
+      <a class="ghost" href="${href(token, `${base}/social-feed?property=${encodeURIComponent(property.code)}`)}">מה שפורסם</a>
       <a class="primary" href="${open}#publish-form">פרסם</a>
     </div>
   </article>`;
@@ -290,8 +293,11 @@ export function propertyPage(token, property, notice = '', base = '', subtitle =
     ? `<div class="people">${property.conversations.map((lead) => personRow({ ...lead, property, messages: [] }, token, base)).join('')}</div>`
     : '<div class="empty">אף לקוח עדיין לא פנה על הנכס הזה.</div>';
   const publications = property.publications.length
-    ? `<ul>${property.publications.map((item) => `<li>${escapeHtml(item.platform)} · ${escapeHtml(item.status)}${item.error ? ` · ${escapeHtml(item.error)}` : ''}</li>`).join('')}</ul>`
+    ? `<ul>${property.publications.map((item) => `<li>${escapeHtml(publicationLine(item))}</li>`).join('')}</ul>`
     : '<p class="muted">הנכס עוד לא נשלח לרשתות.</p>';
+  const posted = (property.socialPosts || []).length
+    ? `<ul>${property.socialPosts.map((post) => `<li><a href="${href(token, `${base}/social-feed?property=${encodeURIComponent(property.code)}`)}">${escapeHtml(hebrewPlatform(post.platform))} · ${escapeHtml(formatWhen(post.publishedAt))} · ${(post.comments || []).length} תגובות</a></li>`).join('')}</ul>`
+    : '<p class="muted">אחרי פרסום מוצלח הפוסט יופיע כאן עם התגובות.</p>';
   return page(token, property.code, 'properties', `
     <header class="page-head">
       <div>
@@ -329,6 +335,8 @@ export function propertyPage(token, property, notice = '', base = '', subtitle =
           <h2>פרסום</h2>
           ${property.marketingText ? `<p class="handed">${escapeHtml(property.marketingText)}</p>` : ''}
           ${publications}
+          <h2>מה שפורסם</h2>
+          ${posted}
         </section>
       </div>
     </div>`, base, subtitle);
@@ -363,6 +371,67 @@ export function leadsPage(token, leads, filter, base = '', subtitle = 'האזו�
       </div>
     </header>
     ${filters(token, filter, base)}
+    ${rows}`, base, subtitle);
+}
+
+const ORIGINAL = {
+  facebook: 'צפה בפוסט המקורי בפייסבוק',
+  instagram: 'צפה בפוסט המקורי באינסטגרם',
+  tiktok: 'צפה בסרטון המקורי בטיקטוק',
+};
+
+function socialCard(post, token, base) {
+  const name = post.broker?.businessName || post.broker?.fullName || 'הדף';
+  const initial = name.trim().charAt(0) || 'נ';
+  const kind = ['facebook', 'instagram', 'tiktok'].includes(post.platform) ? post.platform : 'social';
+  const comments = post.comments || [];
+  const image = post.imageUrl
+    ? `<img class="fb-photo" src="${escapeHtml(post.imageUrl)}" alt="" onerror="this.classList.add('broken')">`
+    : '';
+  const link = post.permalink
+    ? `<a href="${escapeHtml(post.permalink)}" target="_blank" rel="noopener">${ORIGINAL[kind] || 'צפה בפוסט המקורי'}</a>`
+    : '';
+  const property = post.property?.code
+    ? `<a href="${href(token, `${base}/properties/${encodeURIComponent(post.property.code)}`)}">${escapeHtml(post.property.code)}</a>`
+    : '';
+  const thread = comments.map((comment) => {
+    const digits = String(leadContact(post, comment) || '').replace(/\D/g, '');
+    const reply = comment.botReplyText
+      ? `<div class="fb-reply"><span class="ai-badge">תג AI</span><p>${escapeHtml(comment.botReplyText)}</p></div>`
+      : '';
+    const wa = digits ? `<a class="primary" href="https://wa.me/${escapeHtml(digits)}">צור קשר עם הליד בוואטסאפ</a>` : '';
+    return `<div class="fb-comment"><strong>${escapeHtml(comment.authorName)}</strong><p>${escapeHtml(comment.text)}</p>${reply}${wa}</div>`;
+  }).join('');
+  return `<article class="fb-post">
+    <header class="fb-head">
+      <div class="fb-avatar">${escapeHtml(initial)}</div>
+      <div>
+        <strong>${escapeHtml(name)}</strong>
+        <div class="muted">${escapeHtml(formatWhen(post.publishedAt))} · ${escapeHtml(hebrewPlatform(post.platform))}</div>
+      </div>
+      <span class="net ${kind}">${kind === 'facebook' ? 'f' : kind === 'instagram' ? 'ig' : kind === 'tiktok' ? 'tt' : 'ר'}</span>
+    </header>
+    <p class="fb-text">${escapeHtml(post.content || '')}</p>
+    ${image}
+    <div class="fb-bar">${link}<span>${comments.length} תגובות</span>${property}</div>
+    <div class="fb-comments">${thread || '<p class="muted">עדיין אין תגובות על הפוסט הזה.</p>'}</div>
+  </article>`;
+}
+
+export function socialFeedPage(token, posts, base = '', subtitle = 'האזור שלך', propertyCode = '') {
+  const rows = posts.length
+    ? `<div class="feed">${posts.map((post) => socialCard(post, token, base)).join('')}</div>`
+    : '<div class="empty">עדיין אין פוסטים. אחרי פרסום לפייסבוק, אינסטגרם או טיקטוק הם יופיעו כאן עם התגובות והמענה של הבוט.</div>';
+  const intro = propertyCode
+    ? `פוסטים של נכס ${escapeHtml(propertyCode)}.`
+    : 'כל פוסט שעולה לפייסבוק, אינסטגרם או טיקטוק, עם התגובות והמענה שנשלח.';
+  return page(token, 'פעילות ברשתות', 'feed', `
+    <header class="page-head">
+      <div>
+        <h1>פעילות ברשתות</h1>
+        <p>${intro}</p>
+      </div>
+    </header>
     ${rows}`, base, subtitle);
 }
 

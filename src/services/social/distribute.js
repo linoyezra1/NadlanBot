@@ -5,6 +5,8 @@ import { forwardCard, groupShareMessage } from '../../domain/share.js';
 import { clickToWhatsAppLink, naturalWaLink, shortClickToWhatsAppLink } from '../../domain/waLink.js';
 import { config } from '../../config.js';
 import { prisma } from '../../db.js';
+import { logger } from '../../logger.js';
+import { rememberPublished } from '../socialFeed.js';
 import { brokerConnectUrl, publishPropertyPost } from '../socialPublisher.js';
 import { resolveAccounts } from './credentials.js';
 import { publishFacebookGroup, publishFacebookPage, publishInstagram } from './meta.js';
@@ -110,6 +112,17 @@ async function recordPublications(propertyId, results, waLink, caption) {
         error: result.error || null,
       },
     });
+    const visible = result.status === 'published' || result.status === 'processing';
+    if (visible && result.postId) {
+      await rememberPublished({
+        propertyId,
+        platform: result.platform,
+        postId: result.postId,
+        zernioPostId: result.zernioPostId,
+        postUrl: result.postUrl,
+        caption,
+      }).catch((error) => logger.error('social feed save failed', error.message));
+    }
   }
 }
 

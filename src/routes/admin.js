@@ -2,6 +2,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 import { integrationStatus } from '../config.js';
 import { normalizePhone } from '../domain/phone.js';
+import { hebrewPlatform, hebrewPublicationError, hebrewStatus } from '../domain/publicationText.js';
 import { prisma } from '../db.js';
 import { openBroker } from '../services/brokers.js';
 import { deliverResult } from '../services/deliverAll.js';
@@ -115,7 +116,7 @@ async function render(token, result, notice = '') {
   <section>
     <h2>פרסומים</h2>
     <table><tr><th>נכס</th><th>ערוץ</th><th>סטטוס</th><th>פירוט</th></tr>
-    ${publications.map((item) => `<tr><td>${escapeHtml(item.property?.code || '')}</td><td>${escapeHtml(item.platform)}</td><td>${escapeHtml(item.status)}</td><td>${escapeHtml(item.error || item.postUrl || '')}</td></tr>`).join('') || '<tr><td colspan="4">אין פרסומים</td></tr>'}
+    ${publications.map((item) => `<tr><td>${escapeHtml(item.property?.code || '')}</td><td>${escapeHtml(hebrewPlatform(item.platform))}</td><td>${escapeHtml(hebrewStatus(item.status))}</td><td>${escapeHtml(hebrewPublicationError(item.error) || item.postUrl || '')}</td></tr>`).join('') || '<tr><td colspan="4">אין פרסומים</td></tr>'}
     </table>
   </section>
 </main>

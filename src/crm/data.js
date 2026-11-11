@@ -49,6 +49,7 @@ export async function dashboardData(brokerId) {
       include: {
         media: { orderBy: { createdAt: 'asc' }, take: 1 },
         conversations: { where: { role: 'lead' }, select: { id: true, status: true } },
+        _count: { select: { socialPosts: true } },
       },
     }),
     prisma.conversation.findMany({
@@ -80,6 +81,7 @@ export function listProperties(q, brokerId) {
       media: { orderBy: { createdAt: 'asc' } },
       broker: true,
       conversations: { where: { role: 'lead' }, select: { id: true, status: true } },
+      _count: { select: { socialPosts: true } },
     },
   });
 }
@@ -92,6 +94,10 @@ export function getProperty(code) {
       owner: true,
       broker: true,
       publications: { orderBy: { createdAt: 'desc' } },
+      socialPosts: {
+        orderBy: { publishedAt: 'desc' },
+        include: { comments: { where: { isOwnAccount: false }, select: { id: true } } },
+      },
       conversations: {
         where: { role: 'lead' },
         orderBy: { updatedAt: 'desc' },

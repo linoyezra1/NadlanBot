@@ -35,6 +35,7 @@ model Broker {
   socialAccounts SocialAccount[]
   facebookGroups FacebookGroup[]
   conversations  Conversation[]
+  socialPosts   SocialPost[]
 
   @@index([status])
 }
@@ -72,6 +73,7 @@ model Property {
   owner         OwnerPrivateInfo?
   conversations Conversation[]
   publications  Publication[]
+  socialPosts   SocialPost[]
 
   @@index([brokerId, status])
   @@index([city])
@@ -188,6 +190,40 @@ model Publication {
   createdAt  DateTime @default(now())
 
   @@index([propertyId])
+}
+
+model SocialPost {
+  id             String          @id @default(cuid())
+  brokerId       String
+  propertyId     String?
+  platform       String
+  platformPostId String          @unique
+  zernioPostId   String?
+  content        String          @db.Text
+  imageUrl       String?
+  permalink      String?
+  publishedAt    DateTime        @default(now())
+  comments       SocialComment[]
+  broker         Broker          @relation(fields: [brokerId], references: [id], onDelete: Cascade)
+  property       Property?       @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  @@index([brokerId])
+  @@index([propertyId])
+}
+
+model SocialComment {
+  id                String     @id @default(cuid())
+  socialPostId      String
+  platformCommentId String     @unique
+  authorId          String?
+  authorName        String
+  text              String     @db.Text
+  isOwnAccount      Boolean    @default(false)
+  botReplyText      String?    @db.Text
+  createdAt         DateTime   @default(now())
+  post              SocialPost @relation(fields: [socialPostId], references: [id], onDelete: Cascade)
+
+  @@index([socialPostId])
 }
 
 model InboundEvent {

@@ -305,6 +305,7 @@ export async function publishPropertyPost({ brokerId, propertyId, channels, capt
       platform: item.platform,
       status: published ? 'published' : (item.status || 'failed'),
       postId: id,
+      zernioPostId: item.zernioPostId || null,
       postUrl: url,
       error: item.error || item.message || null,
     });

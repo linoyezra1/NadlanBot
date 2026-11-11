@@ -8,6 +8,7 @@ import { generateInquiryReply, propertyFacts } from '../services/openai.js';
 import { prisma } from '../db.js';
 import { text } from '../domain/replies.js';
 import { logger } from '../logger.js';
+import { rememberComment } from '../services/socialFeed.js';
 import { commentReplyPlan, findPropertyForPost, readConnectSession, replyToComment, sendPrivateReply } from '../services/socialPublisher.js';
 import { deliver } from '../services/whatsapp.js';
 
@@ -119,12 +120,18 @@ const NETWORK_LABELS = { facebook: 'פייסבוק', instagram: 'אינסטגר�
 
 async function answerComment(body) {
   const plan = commentReplyPlan(body);
+  const comment = body?.comment || {};
+  const post = body?.post || comment.post || {};
+  const lookupIds = plan?.lookupIds || [post.platformPostId, comment.platformPostId, comment.postId, post.id].filter(Boolean);
+  const property = lookupIds.length ? await findPropertyForPost(lookupIds) : null;
   if (!plan) {
-    logger.warn('comment was not answered', body.comment?.id || '', body.comment?.platform || '');
-    return;
+    logger.warn('comment was not answered', comment.id || '', comment.platform || '');
+  } else if (!property) {
+    logger.warn('comment did not match a property', plan.lookupIds.join(' ') || plan.commentId);
   }
-  const property = await findPropertyForPost(plan.lookupIds);
-  if (!property) logger.warn('comment did not match a property', plan.lookupIds.join(' ') || plan.commentId);
+  let publicMessage = '';
+  let publicSent = false;
+  if (plan) {
   const postView = property ? clientProperty(property, 'post') : null;
   const privateView = property ? clientProperty(property, 'private') : null;
   const waLink = privateView ? commentWaLink(privateView) : '';
@@ -142,7 +149,7 @@ async function answerComment(body) {
     property: privateView,
     waLink,
   });
-  const publicMessage = publicAi || (postView
+  publicMessage = publicAi || (postView
     ? publicCommentReply(postView, plan.authorName)
     : genericCommentReply(plan.authorName));
   const privateMessage = privateAi || (privateView
@@ -155,6 +162,8 @@ async function answerComment(body) {
       commentId: plan.commentId,
       accountId: plan.accountId,
       message: publicMessage,
+    }).then(() => {
+      publicSent = true;
     }).catch((error) => logger.error('public comment reply failed', error.message)));
   }
   if (plan.privatePostId) {
@@ -166,6 +175,13 @@ async function answerComment(body) {
     }).catch((error) => logger.error('private comment reply failed', error.message)));
   }
   await Promise.all(tasks);
+  }
+  await rememberComment(body, {
+    brokerId: property?.brokerId,
+    propertyId: property?.id,
+    content: property?.marketingText,
+    botReplyText: publicSent ? publicMessage : null,
+  }).catch((error) => logger.error('social feed save failed', error.message));
 }
 
 router.get('/connect/:token', (req, res) => {

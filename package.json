@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "test": "node --test test/phone.test.js test/intents.test.js test/fields.test.js test/card.test.js test/channels.test.js test/tags.test.js test/plan.test.js test/fallback.test.js test/webhook.test.js test/marketing.test.js test/socialPublisher.test.js test/propertyMatcher.test.js test/whatsappMode.test.js test/publishLock.test.js",
+    "test": "node --test test/phone.test.js test/intents.test.js test/fields.test.js test/card.test.js test/channels.test.js test/tags.test.js test/plan.test.js test/fallback.test.js test/webhook.test.js test/marketing.test.js test/socialPublisher.test.js test/propertyMatcher.test.js test/whatsappMode.test.js test/publishLock.test.js test/socialFeed.test.js",
     "demo": "node scripts/demo.js",
     "db:push": "node scripts/prisma.js db push",
     "seed": "node prisma/seed.js",

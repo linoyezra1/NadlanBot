@@ -12,6 +12,7 @@ const ICONS = {
   leads: icon('<path d="M16 19v-1a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v1"/><circle cx="10" cy="8" r="3"/><path d="M20 19v-1a3 3 0 0 0-2.2-2.9"/><path d="M16 5.1a3 3 0 0 1 0 5.8"/>'),
   calendar: icon('<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/>'),
   more: icon('<circle cx="6" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="18" cy="12" r="1"/>'),
+  feed: icon('<path d="M5 6h14v9H8l-3 3V6z"/>'),
 };
 
 export function layout({ title, active, token, body, base = '', subtitle = 'האזור שלך' }) {
@@ -25,7 +26,7 @@ export function layout({ title, active, token, body, base = '', subtitle = 'הא
     return `<a class="${on ? 'active' : ''}" href="${href(token, path)}"${on ? ' aria-current="page"' : ''}>${glyph}<span>${label}</span></a>`;
   };
   const extra = base
-    ? `<a href="${href(token, `${base}/properties/new`)}">דירה חדשה</a><a href="${href(token, `${base}/connect`)}">חיבור חשבונות</a>`
+    ? `<a href="${href(token, `${base}/properties/new`)}">דירה חדשה</a><a href="${href(token, `${base}/social-feed`)}">פעילות ברשתות</a><a href="${href(token, `${base}/connect`)}">חיבור חשבונות</a>`
     : '';
   return `<!doctype html>
 <html lang="he" dir="rtl">
@@ -47,6 +48,7 @@ export function layout({ title, active, token, body, base = '', subtitle = 'הא
       ${link(`${root}/properties`, 'נכסים', 'properties', ICONS.properties)}
       ${link(`${root}/leads`, 'לידים', 'leads', ICONS.leads)}
       ${link(`${root}/calendar`, 'יומן', 'calendar', ICONS.calendar)}
+      ${link(`${root}/social-feed`, 'פעילות ברשתות', 'feed', ICONS.feed)}
       ${link(`${root}/connect`, 'חיבור חשבונות', 'connect', ICONS.more)}
     </nav>
   </aside>
