@@ -646,8 +646,8 @@ export function propertyFormPage(token, broker, { errors = [], values = {} } = {
   return page(token, 'דירה חדשה', 'properties', `
     <header class="page-head">
       <div>
-        <h1>דירה חדשה</h1>
-        <p>תעודת הנכס של ${escapeHtml(broker.fullName)}. השדות עם כוכבית נדרשים.</p>
+        <h1>טופס קליטת נכס</h1>
+        <p>ממלאים כאן את כל הפרטים במקום בצ'אט. אחרי השמירה הדירה מופיעה באזור האישי.</p>
       </div>
     </header>
     ${alert}

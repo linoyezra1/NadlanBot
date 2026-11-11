@@ -18,8 +18,12 @@ import {
   isConnectSocialIntent,
   isListGroupsIntent,
   isListIntent,
+  isMenuIntent,
   isNewPropertyIntent,
+  brokerInterrupt,
   parseAddGroup,
+  parseDeleteRequest,
+  parseEditRequest,
   parsePublishRequest,
 } from '../../domain/intents.js';
 import { buttons, text } from '../../domain/replies.js';
@@ -29,7 +33,7 @@ import { readFlow, rememberInbound, saveFlow } from '../conversationStore.js';
 import { extractFromUtterance } from '../extract.js';
 import { attachMedia, countConversationMedia } from '../media.js';
 import { generateMarketing } from '../openai.js';
-import { attachDraftMedia, createPropertyFromDraft, findBrokerProperty, listBrokerProperties } from '../properties.js';
+import { attachDraftMedia, createPropertyFromDraft, findBrokerProperty, listBrokerProperties, updatePropertyFromFields } from '../properties.js';
 import { distribute } from '../social/distribute.js';
 import { brokerConnectUrl } from '../socialPublisher.js';
 
@@ -75,7 +79,7 @@ async function listText(broker) {
   const lines = ['הנכסים שלך:'];
   for (const property of properties) {
     const place = [property.address, property.city].filter(Boolean).join(', ');
-    lines.push(`• ${property.code} — ${place || 'בלי כתובת'} — ${property.price != null ? formatPrice(property.price) : 'בלי מחיר'} — ${property.status === 'active' ? 'פעיל' : property.status}`);
+    lines.push(`• ${property.code} — ${place || 'בלי כתובת'} — ${property.price != null ? formatPrice(property.price) : 'בלי מחיר'} — ${propertyStateLabel(property.status)}`);
   }
   return lines.join('\n');
 }
@@ -87,6 +91,84 @@ async function addGroup(broker, parsed) {
     create: { brokerId: broker.id, groupId: parsed.groupId, name: parsed.name },
   });
   return `הקבוצה "${parsed.name}" נשמרה. פרסום אוטומטי יעבוד רק אם העמוד מנהל בקבוצה והאפליקציה מותקנת בה.`;
+}
+
+function propertyStateLabel(status) {
+  if (status === 'active') return 'פעיל';
+  if (status === 'draft') return 'טיוטה';
+  if (status === 'archived') return 'בארכיון';
+  return status;
+}
+
+function menuText() {
+  return [
+    'אפשר לכתוב:',
+    'דירה חדשה',
+    'הנכסים שלי',
+    'פרסם APT-104',
+    'ערוך APT-104',
+    'מחק APT-104',
+    'ביטול',
+  ].join('\n');
+}
+
+function keptDraftNote(flow, interrupt) {
+  if (!flow?.code) return '';
+  if (interrupt?.code && interrupt.code === flow.code) return '';
+  return `הנכס ${flow.code} נשאר באזור האישי.`;
+}
+
+function flowPatch(flowStep, flow) {
+  return {
+    flowStep,
+    flow,
+    ...(flow.propertyId ? { propertyId: flow.propertyId } : {}),
+  };
+}
+
+function fieldsFromProperty(property) {
+  return {
+    ...freshFlow(),
+    mode: 'guided',
+    fields: {
+      ...blankFields(),
+      address: property.address,
+      city: property.city,
+      neighborhood: property.neighborhood,
+      rooms: property.rooms,
+      floor: property.floor,
+      sizeSqm: property.sizeSqm,
+      price: property.price,
+      amenities: property.amenities,
+      vacancyDate: property.vacancyDate,
+      featuresText: property.featuresText,
+      listingType: property.listingType,
+      ownerName: property.owner?.ownerName || null,
+      ownerPhone: property.owner?.ownerPhone || null,
+      privateNotes: property.owner?.privateNotes || null,
+    },
+    propertyId: property.id,
+    code: property.code,
+  };
+}
+
+async function syncDraft(broker, conversation, flow) {
+  const address = String(flow.fields?.address || '').trim();
+  if (address.length < 3) return { created: false };
+  if (!flow.propertyId) {
+    const property = await createPropertyFromDraft({
+      brokerId: broker.id,
+      fields: flow.fields,
+      status: 'draft',
+    });
+    await attachDraftMedia(conversation.id, property.id);
+    flow.propertyId = property.id;
+    flow.code = property.code;
+    conversation.propertyId = property.id;
+    return { created: true, code: property.code };
+  }
+  await updatePropertyFromFields(flow.propertyId, flow.fields);
+  return { created: false, code: flow.code };
 }
 
 function connectText(broker) {
@@ -116,13 +198,21 @@ async function startOnboarding(broker) {
   });
   return {
     conversation,
-    replies: [text([
-      'דירה חדשה. נמלא את תעודת הנכס שאלה אחרי שאלה, וכל תשובה נשמרת.',
-      'אפשר לשלוח תמונות וסרטונים בכל שלב.',
-      '',
-      questionFor(nextField(flow.fields, flow.skipped) || 'listingType', flow.fields),
-    ].join('\n'))],
+    replies: [text(newPropertyOpening(broker.id, flow))],
   };
+}
+
+export function newPropertyOpening(brokerId, flow = freshFlow()) {
+  const formUrl = `${config.publicBaseUrl}/b/${brokerId}/properties/new`;
+  return [
+    'דירה חדשה. נמלא את תעודת הנכס שאלה אחרי שאלה, וכל תשובה נשמרת.',
+    'אפשר לשלוח תמונות וסרטונים בכל שלב.',
+    '',
+    questionFor(nextField(flow.fields, flow.skipped) || 'listingType', flow.fields),
+    'או שאפשר למלא את הפרטים בקישור הבא:',
+    'טופס קליטת נכס',
+    formUrl,
+  ].join('\n');
 }
 
 async function previewReplies(conversation, flow) {
@@ -137,15 +227,20 @@ async function previewReplies(conversation, flow) {
   ];
 }
 
-async function continueDetails(conversation, flow) {
+async function continueDetails(broker, conversation, flow) {
+  const opened = await syncDraft(broker, conversation, flow);
+  const note = opened.created
+    ? `נשמרה טיוטה ${opened.code}. אפשר לעצור בכל רגע, לפתוח דירה אחרת, או לפרסם נכס קיים.`
+    : '';
   const pending = nextField(flow.fields, flow.skipped);
   if (pending) {
     flow.mode = 'guided';
-    await saveFlow(conversation.id, { flowStep: 'details', flow });
-    return [text(questionFor(pending, flow.fields))];
+    await saveFlow(conversation.id, flowPatch('details', flow));
+    return [text([note, questionFor(pending, flow.fields)].filter(Boolean).join('\n'))];
   }
-  await saveFlow(conversation.id, { flowStep: 'preview', flow });
-  return previewReplies(conversation, flow);
+  await saveFlow(conversation.id, flowPatch('preview', flow));
+  const preview = await previewReplies(conversation, flow);
+  return note ? [text(note), ...preview] : preview;
 }
 
 async function loadProperty(propertyId) {
@@ -222,13 +317,23 @@ async function handleBrokerTurn(broker, event) {
   const buttonId = event.buttonId;
   let onboarding = await findOnboarding(broker.id);
 
-  if (onboarding && (isExactCancel(rawText) || buttonId === 'cancel')) {
-    await rememberInbound(onboarding.id, event, 'broker');
-    await saveFlow(onboarding.id, { status: 'closed', flowStep: 'cancelled' });
-    return {
-      replies: [text('הקליטה בוטלה. אפשר להתחיל מחדש עם "דירה חדשה".')],
-      conversationId: onboarding.id,
-    };
+  if (onboarding) {
+    const interrupt = buttonId === 'cancel' ? { kind: 'cancel' } : brokerInterrupt(rawText);
+    if (interrupt) {
+      await rememberInbound(onboarding.id, event, 'broker');
+      const flow = readFlow(onboarding);
+      await saveFlow(onboarding.id, { status: 'closed', flowStep: interrupt.kind === 'cancel' ? 'cancelled' : 'paused' });
+      if (interrupt.kind === 'cancel') {
+        const note = flow.code
+          ? `הקליטה נעצרה. הנכס ${flow.code} נשאר באזור האישי.`
+          : 'הקליטה בוטלה. אפשר להתחיל מחדש עם "דירה חדשה".';
+        return { replies: [text(note)], conversationId: onboarding.id };
+      }
+      const result = await handleIdle(broker, event, { storeInbound: false });
+      const note = keptDraftNote(flow, interrupt);
+      if (note) result.replies = [text(note), ...(result.replies || [])];
+      return result;
+    }
   }
 
   if (!onboarding) return handleIdle(broker, event);
@@ -291,14 +396,14 @@ export async function handleBroker(broker, event) {
 
 async function step(broker, conversation, flow, rawText, buttonId) {
   if (conversation.flowStep === 'media') return mediaStep(conversation, rawText);
-  if (conversation.flowStep === 'details') return detailsStep(conversation, flow, rawText);
-  if (conversation.flowStep === 'edit') return editStep(conversation, flow, rawText);
+  if (conversation.flowStep === 'details') return detailsStep(broker, conversation, flow, rawText);
+  if (conversation.flowStep === 'edit') return editStep(broker, conversation, flow, rawText);
   if (conversation.flowStep === 'preview') return previewStep(broker, conversation, flow, rawText, buttonId);
   if (conversation.flowStep === 'publish_ask') return publishAskStep(conversation, flow, rawText, buttonId);
   if (conversation.flowStep === 'marketing') return marketingStep(broker, conversation, flow, rawText, buttonId);
   if (conversation.flowStep === 'channels') return channelsStep(broker, conversation, flow, rawText, buttonId);
   if (conversation.flowStep === 'groups') return groupsStep(broker, conversation, flow, rawText);
-  return detailsStep(conversation, flow, rawText);
+  return detailsStep(broker, conversation, flow, rawText);
 }
 
 async function mediaStep(conversation, rawText) {
@@ -314,7 +419,7 @@ async function mediaStep(conversation, rawText) {
   return [text(questionFor('listingType', flow.fields))];
 }
 
-async function detailsStep(conversation, flow, rawText) {
+async function detailsStep(broker, conversation, flow, rawText) {
   if (isDoneMedia(rawText)) {
     const count = await countConversationMedia(conversation.id);
     const pending = nextField(flow.fields, flow.skipped);
@@ -324,7 +429,7 @@ async function detailsStep(conversation, flow, rawText) {
   if (flow.mode !== 'guided') {
     if (isGuidedRequest(rawText)) {
       flow.mode = 'guided';
-      return continueDetails(conversation, flow);
+      return continueDetails(broker, conversation, flow);
     }
     const partial = await extractFromUtterance(rawText);
     if (extractedCount(partial) < 2 && rawText.length < 80) {
@@ -332,44 +437,53 @@ async function detailsStep(conversation, flow, rawText) {
     }
     flow.fields = mergeExtract(flow.fields, partial);
     flow.mode = 'guided';
-    return continueDetails(conversation, flow);
+    return continueDetails(broker, conversation, flow);
   }
   const key = nextField(flow.fields, flow.skipped);
-  if (!key) return continueDetails(conversation, flow);
+  if (!key) return continueDetails(broker, conversation, flow);
   if (!rawText) return [text(questionFor(key, flow.fields))];
+  if (/^(?:פרסם|מחק|למחוק|ערוך|לערוך)\b/.test(rawText)) {
+    return [text(`כדי לצאת מהשאלון צרף קוד נכס, למשל: פרסם APT-104.\n${questionFor(key, flow.fields)}`)];
+  }
   const dumped = await extractFromUtterance(rawText);
   if (extractedCount(dumped) >= 2) {
     flow.fields = mergeExtract(flow.fields, dumped);
-    return continueDetails(conversation, flow);
+    return continueDetails(broker, conversation, flow);
   }
   const assigned = assignAnswer(flow.fields, key, rawText);
   if (assigned.error) return [text(assigned.error)];
   if (assigned.skip) flow.skipped = [...flow.skipped, key];
   else flow.fields = assigned.fields;
-  return continueDetails(conversation, flow);
+  return continueDetails(broker, conversation, flow);
 }
 
-async function editStep(conversation, flow, rawText) {
+async function editStep(broker, conversation, flow, rawText) {
   const partial = await extractFromUtterance(rawText);
   if (extractedCount(partial) === 0) {
     return [text('לא קלטתי מה לשנות. אפשר לכתוב למשל: המחיר 2,300,000, הכתובת רחוב הרצל 12.')];
   }
   flow.fields = mergeExtract(flow.fields, partial);
-  await saveFlow(conversation.id, { flowStep: 'preview', flow });
+  await syncDraft(broker, conversation, flow);
+  await saveFlow(conversation.id, flowPatch('preview', flow));
   return previewReplies(conversation, flow);
 }
 
 async function previewStep(broker, conversation, flow, rawText, buttonId) {
   if (buttonId === 'save' || isExactConfirm(rawText)) return commitProperty(broker, conversation, flow);
   if (buttonId === 'edit' || rawText === 'עריכה') {
-    await saveFlow(conversation.id, { flowStep: 'edit', flow });
+    await saveFlow(conversation.id, flowPatch('edit', flow));
     return [text('מה לשנות? אפשר משפט אחד, למשל: המחיר 2,300,000 והקומה 4.')];
   }
-  return editStep(conversation, flow, rawText);
+  return editStep(broker, conversation, flow, rawText);
 }
 
 async function commitProperty(broker, conversation, flow) {
-  const property = await createPropertyFromDraft({ brokerId: broker.id, fields: flow.fields });
+  if (String(flow.fields?.address || '').trim().length < 3) {
+    return [text('עדיין אין כתובת, אז לא נפתח כרטיס. מה הכתובת המלאה?')];
+  }
+  const property = flow.propertyId
+    ? await updatePropertyFromFields(flow.propertyId, flow.fields, { status: 'active' })
+    : await createPropertyFromDraft({ brokerId: broker.id, fields: flow.fields, status: 'active' });
   await attachDraftMedia(conversation.id, property.id);
   flow.code = property.code;
   flow.propertyId = property.id;
@@ -432,18 +546,23 @@ async function groupsStep(broker, conversation, flow, rawText) {
   return finishPublish(broker, conversation, flow, flow.channels, selection.groups);
 }
 
-async function handleIdle(broker, event) {
+async function handleIdle(broker, event, { storeInbound = true } = {}) {
   const inbox = await ensureInbox(broker);
-  await rememberInbound(inbox.id, event, 'broker');
+  if (storeInbound) await rememberInbound(inbox.id, event, 'broker');
   const rawText = (event.text || '').trim();
 
   if (isNewPropertyIntent(rawText)) {
     const started = await startOnboarding(broker);
     return { replies: started.replies, conversationId: started.conversation.id };
   }
+  if (isMenuIntent(rawText)) return { replies: [text(menuText())], conversationId: inbox.id };
   if (isListIntent(rawText)) return { replies: [text(await listText(broker))], conversationId: inbox.id };
   const request = parsePublishRequest(rawText);
   if (request) return startPublish(broker, request.code, inbox.id, request.channels);
+  const deleted = parseDeleteRequest(rawText);
+  if (deleted) return { replies: [text(await archiveProperty(broker, deleted))], conversationId: inbox.id };
+  const edited = parseEditRequest(rawText);
+  if (edited) return startEdit(broker, edited, inbox.id);
   if (/^פרסם(?:ו)?\b/.test(rawText) && parseChannels(rawText).length) {
     const channel = parseChannels(rawText)[0];
     const name = channel === 'instagram' ? 'באינסטגרם' : channel === 'tiktok' ? 'בטיקטוק' : 'בפייסבוק';
@@ -478,6 +597,35 @@ async function handleIdle(broker, event) {
   };
 }
 
+async function archiveProperty(broker, code) {
+  const property = await findBrokerProperty(broker.id, code);
+  if (!property) return `לא מצאתי אצלך נכס ${code}.`;
+  if (property.status === 'archived') return `${code} כבר בארכיון.`;
+  await prisma.property.update({ where: { id: property.id }, data: { status: 'archived' } });
+  return `${code} הועבר לארכיון ולא יופיע ללקוחות.`;
+}
+
+async function startEdit(broker, code, inboxId) {
+  const property = await findBrokerProperty(broker.id, code);
+  if (!property) return { replies: [text(`לא מצאתי אצלך נכס ${code}.`)], conversationId: inboxId };
+  const flow = fieldsFromProperty(property);
+  const conversation = await prisma.conversation.create({
+    data: {
+      role: 'broker',
+      brokerId: broker.id,
+      brokerPhone: broker.phoneNumber,
+      status: 'onboarding',
+      flowStep: 'edit',
+      propertyId: property.id,
+      flowData: flow,
+    },
+  });
+  return {
+    replies: [text(`עורך את ${property.code}. מה לשנות? אפשר משפט אחד, למשל: המחיר 2,300,000 והקומה 4.`)],
+    conversationId: conversation.id,
+  };
+}
+
 async function startPublish(broker, code, inboxId, channels = []) {
   const property = await findBrokerProperty(broker.id, code);
   if (!property) return { replies: [text(`לא מצאתי אצלך נכס ${code}.`)], conversationId: inboxId };
@@ -486,24 +634,7 @@ async function startPublish(broker, code, inboxId, channels = []) {
     return { replies: [text('יש קליטה פתוחה. סיים אותה או כתוב ביטול, ואז אפשר לפרסם.')], conversationId: open.id };
   }
   const flow = {
-    ...freshFlow(),
-    mode: 'guided',
-    fields: {
-      ...blankFields(),
-      address: property.address,
-      city: property.city,
-      neighborhood: property.neighborhood,
-      rooms: property.rooms,
-      floor: property.floor,
-      sizeSqm: property.sizeSqm,
-      price: property.price,
-      amenities: property.amenities,
-      vacancyDate: property.vacancyDate,
-      featuresText: property.featuresText,
-      listingType: property.listingType,
-    },
-    propertyId: property.id,
-    code: property.code,
+    ...fieldsFromProperty(property),
     channels,
   };
   const conversation = await prisma.conversation.create({

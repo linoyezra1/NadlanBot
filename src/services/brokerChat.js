@@ -153,11 +153,12 @@ export function brokerChatPage({ broker, brokers, messages, step }) {
 <html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>שיחה עם ${escapeHtml(broker.fullName)}</title>
   <style>
-    body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #efeae2; color: #111; }
-    .audit { display: grid; grid-template-columns: 280px 1fr; height: 100vh; }
+    body { margin: 0; overflow-x: hidden; width: 100%; max-width: 100vw; font-family: "Segoe UI", Arial, sans-serif; background: #efeae2; color: #111; }
+    .audit { display: grid; grid-template-columns: 280px minmax(0, 1fr); height: 100vh; width: 100%; max-width: 100%; }
+    .menu-btn { display: none; min-height: 44px; margin-top: 8px; padding: 8px 14px; border: 0; border-radius: 999px; background: #111; color: #fff; }
     .people { background: #fff; border-left: 1px solid #ddd; overflow: auto; }
     .people h1 { font-size: 18px; margin: 16px; }
     .people h1 a { color: inherit; text-decoration: none; }
@@ -179,9 +180,16 @@ export function brokerChatPage({ broker, brokers, messages, step }) {
     .bubble time { display: block; margin-top: 4px; color: #667781; font-size: 11px; text-align: left; }
     .bubble.bot { margin-right: auto; background: #d9fdd3; }
     .bubble.broker { margin-left: auto; background: #fff; }
-    .bubble img { display: block; max-width: 220px; border-radius: 8px; margin-bottom: 6px; }
+    .bubble img { display: block; max-width: 100%; border-radius: 8px; margin-bottom: 6px; }
+    .who { min-height: 44px; }
     .empty { margin: auto; color: #667781; direction: rtl; }
-    @media (max-width: 800px) { .audit { grid-template-columns: 1fr; } .people { display: none; } }
+    @media (max-width: 768px) {
+      .audit { grid-template-columns: minmax(0, 1fr); height: 100dvh; }
+      .people { display: none; position: fixed; inset: 0; z-index: 5; }
+      .people.open { display: block; }
+      .menu-btn { display: inline-flex; align-items: center; }
+      .bubble { max-width: 85%; }
+    }
   </style>
 </head>
 <body>
@@ -195,6 +203,7 @@ export function brokerChatPage({ broker, brokers, messages, step }) {
       <strong>${escapeHtml(broker.fullName)}</strong>
       <span dir="ltr">${escapeHtml(broker.phoneNumber)}</span>
       <div class="badge">${escapeHtml(label || 'אין תהליך פעיל')}</div>
+      <button class="menu-btn" id="people-open" type="button">מתווכים</button>
     </header>
     <div id="chat-log">${bubbles || '<p class="empty">עדיין אין הודעות בשיחה הזו.</p>'}</div>
   </section>
@@ -202,6 +211,9 @@ export function brokerChatPage({ broker, brokers, messages, step }) {
 <script>
   const log = document.getElementById('chat-log');
   if (log) log.scrollTop = log.scrollHeight;
+  document.getElementById('people-open')?.addEventListener('click', () => {
+    document.querySelector('.people')?.classList.toggle('open');
+  });
 </script>
 </body>
 </html>`;

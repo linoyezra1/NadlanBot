@@ -177,7 +177,7 @@ function privacyPage() {
 <html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>מדיניות פרטיות · NadlanBot</title>
   <link rel="stylesheet" href="/crm.css">
 </head>
@@ -202,7 +202,7 @@ function facebookStatusPage(title, text) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-  return `<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><title>${escape(title)}</title><body style="font-family:Segoe UI,Arial,sans-serif"><h1>${escape(title)}</h1><p>${escape(text)}</p></body></html>`;
+  return `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"><title>${escape(title)}</title></head><body style="font-family:Segoe UI,Arial,sans-serif;margin:0;padding:16px;overflow-x:hidden;max-width:100vw"><h1>${escape(title)}</h1><p>${escape(text)}</p></body></html>`;
 }
 
 function connectPage({ appId, configId, brokerId, version, ready }) {
@@ -213,7 +213,7 @@ function connectPage({ appId, configId, brokerId, version, ready }) {
 <html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>חיבור וואטסאפ עסקי</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

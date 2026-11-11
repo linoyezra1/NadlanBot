@@ -40,7 +40,7 @@ export function connectedPage({ iconUrl = '', homeUrl = '', username = '', platf
 <html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>החיבור הושלם</title>
   <style>
     :root { color-scheme: light; }
@@ -48,6 +48,9 @@ export function connectedPage({ iconUrl = '', homeUrl = '', username = '', platf
     body {
       margin: 0;
       min-height: 100vh;
+      overflow-x: hidden;
+      width: 100%;
+      max-width: 100vw;
       display: grid;
       place-items: center;
       padding: 24px;

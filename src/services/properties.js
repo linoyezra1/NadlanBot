@@ -5,24 +5,32 @@ import { prisma } from '../db.js';
 import { storeBuffer } from './storage.js';
 import { MAX_MEDIA_BYTES } from '../crm/multipart.js';
 
-export async function createPropertyFromDraft({ brokerId, fields }) {
+export function propertyData(fields, status) {
+  const data = {
+    address: fields.address,
+    city: fields.city,
+    neighborhood: fields.neighborhood,
+    rooms: fields.rooms,
+    floor: fields.floor,
+    sizeSqm: fields.sizeSqm,
+    price: fields.price,
+    amenities: fields.amenities || {},
+    disclosure: fields.disclosure || undefined,
+    vacancyDate: fields.vacancyDate,
+    featuresText: fields.featuresText,
+    listingType: fields.listingType,
+  };
+  if (status) data.status = status;
+  if (data.disclosure == null) delete data.disclosure;
+  return data;
+}
+
+export async function createPropertyFromDraft({ brokerId, fields, status = 'active' }) {
   const created = await prisma.property.create({
     data: {
       code: `TMP-${crypto.randomUUID()}`,
       brokerId,
-      address: fields.address,
-      city: fields.city,
-      neighborhood: fields.neighborhood,
-      rooms: fields.rooms,
-      floor: fields.floor,
-      sizeSqm: fields.sizeSqm,
-      price: fields.price,
-      amenities: fields.amenities || {},
-      disclosure: fields.disclosure || undefined,
-      vacancyDate: fields.vacancyDate,
-      featuresText: fields.featuresText,
-      listingType: fields.listingType,
-      status: 'active',
+      ...propertyData(fields, status),
       owner: {
         create: {
           ownerName: fields.ownerName,
@@ -40,6 +48,30 @@ export async function createPropertyFromDraft({ brokerId, fields }) {
   });
 }
 
+export async function updatePropertyFromFields(propertyId, fields, { status } = {}) {
+  return prisma.property.update({
+    where: { id: propertyId },
+    data: {
+      ...propertyData(fields, status),
+      owner: {
+        upsert: {
+          update: {
+            ownerName: fields.ownerName || null,
+            ownerPhone: fields.ownerPhone || null,
+            privateNotes: fields.privateNotes || null,
+          },
+          create: {
+            ownerName: fields.ownerName || null,
+            ownerPhone: fields.ownerPhone || null,
+            privateNotes: fields.privateNotes || null,
+          },
+        },
+      },
+    },
+    include: { owner: true, media: true },
+  });
+}
+
 export function findActiveProperty(code) {
   return prisma.property.findFirst({
     where: { code, status: 'active' },
@@ -50,7 +82,7 @@ export function findActiveProperty(code) {
 export function findBrokerProperty(brokerId, code) {
   return prisma.property.findFirst({
     where: { brokerId, code },
-    include: { media: true },
+    include: { media: true, owner: true },
   });
 }
 

@@ -41,6 +41,41 @@ export function parsePublishCommand(text) {
   return parsePublishRequest(text)?.code || null;
 }
 
+export function isMenuIntent(text) {
+  return /^(תפריט|menu)$/i.test(String(text || '').trim());
+}
+
+export function isFreshPropertyCommand(text) {
+  return /^(דירה חדשה|נכס חדש)[.!?]?$/.test(String(text || '').trim());
+}
+
+export function parseDeleteRequest(text) {
+  const match = String(text || '').trim().match(/^(?:מחק|למחוק)\s+(APT-\d+)\s*$/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+export function parseEditRequest(text) {
+  const match = String(text || '').trim().match(/^(?:ערוך|לערוך)\s+(APT-\d+)\s*$/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+export function brokerInterrupt(text) {
+  const source = String(text || '').trim();
+  if (!source || source.length > 80) return null;
+  if (isExactCancel(source)) return { kind: 'cancel' };
+  if (isMenuIntent(source)) return { kind: 'menu' };
+  if (isFreshPropertyCommand(source)) return { kind: 'new' };
+  if (/^פרסם/.test(source)) {
+    const publish = parsePublishRequest(source);
+    if (publish) return { kind: 'publish', code: publish.code, channels: publish.channels };
+  }
+  const deleted = parseDeleteRequest(source);
+  if (deleted) return { kind: 'delete', code: deleted };
+  const edited = parseEditRequest(source);
+  if (edited) return { kind: 'edit', code: edited };
+  return null;
+}
+
 export function isListGroupsIntent(text) {
   return /הקבוצות שלי|רשימת קבוצות/.test(String(text || ''));
 }

@@ -21,6 +21,10 @@ function escapeHtml(value) {
   }[char]));
 }
 
+function cell(label, value) {
+  return `<td data-label="${escapeHtml(label)}">${value}</td>`;
+}
+
 function bubble(reply) {
   if (reply.type === 'image' || reply.type === 'video') {
     return `<p class="bot">${reply.type === 'video' ? 'סרטון' : 'תמונה'}: ${escapeHtml(reply.caption || reply.url)}</p>`;
@@ -47,23 +51,35 @@ async function render(token, result, notice = '') {
 <html lang="he" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>לוח תפעול · NadlanBot</title>
   <style>
-    body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #f4f1ea; color: #1d1a16; }
-    main { max-width: 980px; margin: 0 auto; padding: 24px; }
+    body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #f4f1ea; color: #1d1a16; overflow-x: hidden; width: 100%; max-width: 100vw; box-sizing: border-box; }
+    * { box-sizing: border-box; }
+    main { max-width: 980px; margin: 0 auto; padding: 24px 16px; }
     h1 { margin-bottom: 4px; }
     .muted { color: #665f56; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-    .card, section, form { background: white; border-radius: 14px; padding: 16px; margin: 16px 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; }
+    .card, section, form { background: white; border-radius: 14px; padding: 16px; margin: 16px 0; max-width: 100%; }
+    .table-scroll { width: 100%; max-width: 100%; }
     table { width: 100%; border-collapse: collapse; }
-    td, th { text-align: right; padding: 8px 6px; border-bottom: 1px solid #eee; vertical-align: top; }
-    input, textarea, button { font: inherit; width: 100%; box-sizing: border-box; margin-top: 6px; }
+    td, th { text-align: right; padding: 8px 6px; border-bottom: 1px solid #eee; vertical-align: top; overflow-wrap: anywhere; }
+    input, textarea, button { font: inherit; width: 100%; box-sizing: border-box; margin-top: 6px; max-width: 100%; }
     textarea { min-height: 90px; }
-    button { width: auto; background: #1f6b4a; color: white; border: 0; border-radius: 999px; padding: 8px 16px; }
-    .bot, .hot { white-space: pre-wrap; background: #eef6f1; border-radius: 12px; padding: 10px; }
+    button, a { min-height: 44px; }
+    button { width: auto; background: #1f6b4a; color: white; border: 0; border-radius: 999px; padding: 12px 16px; }
+    .bot, .hot { white-space: pre-wrap; background: #eef6f1; border-radius: 12px; padding: 10px; overflow-wrap: anywhere; }
     .hot { background: #fff4e8; }
     .private { color: #8a5a00; }
+    @media (max-width: 768px) {
+      main { padding: 16px 12px 28px; }
+      .table-scroll { overflow-x: visible; }
+      table.stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+      table.stack, table.stack tbody, table.stack tr, table.stack td { display: block; width: 100%; }
+      table.stack tr { background: #fff; border: 1px solid #eee; border-radius: 14px; margin: 0 0 12px; padding: 8px 12px; }
+      table.stack td { display: flex; justify-content: space-between; gap: 12px; border: 0; padding: 10px 0; }
+      table.stack td::before { content: attr(data-label); font-weight: 700; flex: none; }
+    }
   </style>
 </head>
 <body>
@@ -98,27 +114,27 @@ async function render(token, result, notice = '') {
   ${resultHtml}
   <section>
     <h2>מתווכים</h2>
-    <table><tr><th>שם</th><th>טלפון</th><th>סטטוס</th><th>הנתיב</th><th>שיחה</th></tr>
-    ${brokers.map((broker) => `<tr><td>${escapeHtml(broker.fullName)}</td><td>${escapeHtml(broker.phoneNumber)}</td><td>${escapeHtml(broker.status)}</td><td><a href="/b/${escapeHtml(broker.id)}">/b/${escapeHtml(broker.id)}</a></td><td><a href="/admin/brokers/${escapeHtml(broker.id)}/chat">צפה בשיחה</a></td></tr>`).join('') || '<tr><td colspan="5">אין מתווכים</td></tr>'}
-    </table>
+    <div class="table-scroll"><table class="stack"><thead><tr><th>שם</th><th>טלפון</th><th>סטטוס</th><th>הנתיב</th><th>שיחה</th></tr></thead><tbody>
+    ${brokers.map((broker) => `<tr>${cell('שם', escapeHtml(broker.fullName))}${cell('טלפון', escapeHtml(broker.phoneNumber))}${cell('סטטוס', escapeHtml(broker.status))}${cell('הנתיב', `<a href="/b/${escapeHtml(broker.id)}">/b/${escapeHtml(broker.id)}</a>`)}${cell('שיחה', `<a href="/admin/brokers/${escapeHtml(broker.id)}/chat">צפה בשיחה</a>`)}</tr>`).join('') || '<tr><td colspan="5">אין מתווכים</td></tr>'}
+    </tbody></table></div>
   </section>
   <section>
     <h2>נכסים</h2>
-    <table><tr><th>קוד</th><th>כתובת</th><th>מחיר</th><th>מדיה</th><th>בעלים חסוי</th></tr>
-    ${properties.map((property) => `<tr><td>${escapeHtml(property.code)}</td><td>${escapeHtml([property.address, property.city].filter(Boolean).join(', '))}</td><td>${property.price ?? ''}</td><td>${property._count.media}</td><td class="private">${escapeHtml(property.owner?.ownerName || '—')}</td></tr>`).join('') || '<tr><td colspan="5">אין נכסים</td></tr>'}
-    </table>
+    <div class="table-scroll"><table class="stack"><thead><tr><th>קוד</th><th>כתובת</th><th>מחיר</th><th>מדיה</th><th>בעלים חסוי</th></tr></thead><tbody>
+    ${properties.map((property) => `<tr>${cell('קוד', escapeHtml(property.code))}${cell('כתובת', escapeHtml([property.address, property.city].filter(Boolean).join(', ')))}${cell('מחיר', escapeHtml(property.price ?? ''))}${cell('מדיה', escapeHtml(property._count.media))}${cell('בעלים חסוי', `<span class="private">${escapeHtml(property.owner?.ownerName || '—')}</span>`)}</tr>`).join('') || '<tr><td colspan="5">אין נכסים</td></tr>'}
+    </tbody></table></div>
   </section>
   <section>
     <h2>שיחות אחרונות</h2>
-    <table><tr><th>תפקיד</th><th>טלפון</th><th>נכס</th><th>סטטוס</th><th>שלב</th></tr>
-    ${conversations.map((conversation) => `<tr><td>${escapeHtml(conversation.role)}</td><td>${escapeHtml(conversation.leadPhone || conversation.brokerPhone || '')}</td><td>${escapeHtml(conversation.property?.code || '')}</td><td>${escapeHtml(conversation.status)}</td><td>${escapeHtml(conversation.flowStep)}</td></tr>`).join('') || '<tr><td colspan="5">אין שיחות</td></tr>'}
-    </table>
+    <div class="table-scroll"><table class="stack"><thead><tr><th>תפקיד</th><th>טלפון</th><th>נכס</th><th>סטטוס</th><th>שלב</th></tr></thead><tbody>
+    ${conversations.map((conversation) => `<tr>${cell('תפקיד', escapeHtml(conversation.role))}${cell('טלפון', escapeHtml(conversation.leadPhone || conversation.brokerPhone || ''))}${cell('נכס', escapeHtml(conversation.property?.code || ''))}${cell('סטטוס', escapeHtml(conversation.status))}${cell('שלב', escapeHtml(conversation.flowStep))}</tr>`).join('') || '<tr><td colspan="5">אין שיחות</td></tr>'}
+    </tbody></table></div>
   </section>
   <section>
     <h2>פרסומים</h2>
-    <table><tr><th>נכס</th><th>ערוץ</th><th>סטטוס</th><th>פירוט</th></tr>
-    ${publications.map((item) => `<tr><td>${escapeHtml(item.property?.code || '')}</td><td>${escapeHtml(hebrewPlatform(item.platform))}</td><td>${escapeHtml(hebrewStatus(item.status))}</td><td>${escapeHtml(hebrewPublicationError(item.error) || item.postUrl || '')}</td></tr>`).join('') || '<tr><td colspan="4">אין פרסומים</td></tr>'}
-    </table>
+    <div class="table-scroll"><table class="stack"><thead><tr><th>נכס</th><th>ערוץ</th><th>סטטוס</th><th>פירוט</th></tr></thead><tbody>
+    ${publications.map((item) => `<tr>${cell('נכס', escapeHtml(item.property?.code || ''))}${cell('ערוץ', escapeHtml(hebrewPlatform(item.platform)))}${cell('סטטוס', escapeHtml(hebrewStatus(item.status)))}${cell('פירוט', escapeHtml(hebrewPublicationError(item.error) || item.postUrl || ''))}</tr>`).join('') || '<tr><td colspan="4">אין פרסומים</td></tr>'}
+    </tbody></table></div>
   </section>
 </main>
 </body>
@@ -129,7 +145,7 @@ router.get('/admin/brokers/:brokerId/chat', async (req, res, next) => {
   try {
     const broker = await prisma.broker.findUnique({ where: { id: req.params.brokerId } });
     if (!broker) {
-      res.status(404).type('html').send('<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><body><p>המתווך לא נמצא.</p></body></html>');
+      res.status(404).type('html').send('<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"></head><body><p>המתווך לא נמצא.</p></body></html>');
       return;
     }
     await backfillBrokerChat(broker.id);
