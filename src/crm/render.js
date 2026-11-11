@@ -13,7 +13,7 @@ import {
   propertyStatus,
   tagLabel,
 } from './format.js';
-import { DISCLOSURE_FIELDS, disclosureMode, parkingPhrase } from '../domain/disclosure.js';
+import { disclosureMode, parkingPhrase } from '../domain/disclosure.js';
 import { hebrewPlatform, publicationLine } from '../domain/publicationText.js';
 import { naturalWaLink } from '../domain/waLink.js';
 import { leadContact } from '../services/socialFeed.js';
@@ -504,27 +504,22 @@ function networkLine(broker) {
   return 'החשבונות עדיין לא מחוברים.';
 }
 
-function showSelect(name, current = 'say') {
-  const options = [['say', 'לומר'], ['private', 'רק בפרטי'], ['hide', 'הסתר']];
-  return `<select name="show_${name}" aria-label="האם לומר">${options.map(([value, label]) => `<option value="${value}" ${current === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
-}
-
-function textField(name, label, value, extra = '', disclose = false, show = 'say') {
-  return `<label class="field"><span>${label}</span><input name="${name}" value="${escapeHtml(value ?? '')}" ${extra}>${disclose ? showSelect(name, show) : ''}</label>`;
+function textField(name, label, value, extra = '') {
+  return `<label class="field"><span>${label}</span><input name="${name}" value="${escapeHtml(value ?? '')}" ${extra}></label>`;
 }
 
 function areaField(name, label, value) {
   return `<label class="field"><span>${label}</span><textarea name="${name}">${escapeHtml(value ?? '')}</textarea></label>`;
 }
 
-function yesNo(name, label, value, disclose = false, show = 'say') {
+function yesNo(name, label, value) {
   return `<fieldset class="field"><legend>${label}</legend><div class="yesno">
     <label><input type="radio" name="${name}" value="yes" ${value === 'yes' ? 'checked' : ''}> יש</label>
     <label><input type="radio" name="${name}" value="no" ${value === 'no' ? 'checked' : ''}> אין</label>
-  </div>${disclose ? showSelect(name, show) : ''}</fieldset>`;
+  </div></fieldset>`;
 }
 
-function parkingChoice(value, show = 'say') {
+function parkingChoice(value) {
   const options = [
     ['tabu', 'יש חנייה, בטאבו'],
     ['building', 'חניון בניין, לא בטאבו'],
@@ -532,23 +527,62 @@ function parkingChoice(value, show = 'say') {
   ];
   return `<fieldset class="field"><legend>חניה *</legend><div class="yesno">
     ${options.map(([id, label]) => `<label><input type="radio" name="parking" value="${id}" ${value === id ? 'checked' : ''} required> ${label}</label>`).join('')}
-  </div>${showSelect('parking', show)}</fieldset>`;
+  </div></fieldset>`;
+}
+
+function exposureText(property, name) {
+  const amenities = property.amenities || {};
+  const amenity = (key, yes, no) => (amenities[key] === true ? yes : amenities[key] === false ? no : 'לא צוין');
+  if (name === 'price') return property.price == null ? 'לא צוין' : money(property.price);
+  if (name === 'rooms') return property.rooms == null ? 'לא צוין' : `${property.rooms} חדרים`;
+  if (name === 'floor') return property.floor ? `קומה ${property.floor}` : 'לא צוין';
+  if (name === 'size') return property.sizeSqm == null ? 'לא צוין' : `${property.sizeSqm} מ"ר`;
+  if (name === 'address') {
+    const line = [property.address, property.neighborhood].filter(Boolean).join(', ');
+    return [line, property.city ? `(${property.city})` : ''].filter(Boolean).join(' ') || 'לא צוין';
+  }
+  if (name === 'parking') return parkingPhrase(amenities) || 'לא צוין';
+  if (name === 'elevator') return amenity('elevator', 'יש מעלית', 'אין מעלית');
+  if (name === 'mamad') return amenity('mamad', 'יש ממ"ד', 'אין ממ"ד');
+  if (name === 'balcony') return amenity('balcony', 'יש מרפסת', 'אין מרפסת');
+  return property.featuresText || 'לא צוין';
+}
+
+function exposureOn(property, keys) {
+  return keys.every((key) => disclosureMode(property.disclosure, key) === 'say');
 }
 
 function disclosureForm(token, base, property) {
-  const kind = property.amenities?.parkingKind === 'building'
-    ? 'building'
-    : property.amenities?.parking === false ? 'no' : 'tabu';
-  const rows = DISCLOSURE_FIELDS.filter(([key]) => key !== 'parking').map(([key, label]) => {
-    const value = key === 'price' ? money(property.price) : property[key];
-    return `<label class="field"><span>${escapeHtml(label)}${value != null && value !== '' ? ` · ${escapeHtml(value)}` : ''}</span>${showSelect(key, disclosureMode(property.disclosure, key))}</label>`;
-  }).join('');
-  return `<form class="sheet" method="post" action="${href(token, `${base}/properties/${encodeURIComponent(property.code)}/card`)}">
-    <h3>מה מותר לומר ללקוח</h3>
-    <p class="muted">לומר גם בפרסום. רק בפרטי נשמר לשיחה ולא עולה לפוסט. הסתר נשאר אצלנו, וללקוח נאמר שאין את המידע.</p>
-    ${parkingChoice(kind, disclosureMode(property.disclosure, 'parking'))}
-    <div class="grid-2">${rows}</div>
-    <button class="primary" type="submit">שמירת החשיפה</button>
+  const rows = [
+    ['price', 'מחיר', ['price']],
+    ['rooms', 'חדרים', ['rooms']],
+    ['floor', 'קומה', ['floor']],
+    ['size', 'שטח (מ"ר)', ['sizeSqm']],
+    ['address', 'כתובת ושכונה', ['address', 'neighborhood', 'city']],
+    ['parking', 'חניה', ['parking']],
+    ['elevator', 'מעלית', ['elevator']],
+    ['mamad', 'ממ"ד', ['mamad']],
+    ['balcony', 'מרפסת', ['balcony']],
+    ['features', 'יתרונות ומאפיינים', ['featuresText']],
+  ];
+  const list = rows.map(([name, label, keys]) => `<div class="exposure-row">
+      <div class="field-info">
+        <span class="field-label">${label}</span>
+        <span class="field-val">${escapeHtml(exposureText(property, name))}</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" name="expose_${name}" value="on" ${exposureOn(property, keys) ? 'checked' : ''}>
+        <span class="slider"></span>
+      </label>
+    </div>`).join('');
+  return `<form class="property-exposure-card" method="post" action="${href(token, `${base}/properties/${encodeURIComponent(property.code)}/card`)}">
+    <div class="card-header">
+      <h3>הגדרות חשיפת פרטי נכס</h3>
+      <p>בחר אילו פרטים הבוט יציג ללקוחות ובפוסטים ברשתות</p>
+    </div>
+    <input type="hidden" name="exposureForm" value="1">
+    <div class="exposure-list">${list}</div>
+    <button type="submit" class="save-btn">שמירת הגדרות חשיפה</button>
   </form>`;
 }
 
@@ -626,23 +660,22 @@ export function propertyFormPage(token, broker, { errors = [], values = {} } = {
         </div>
       </fieldset>
       <div class="grid-2">
-        ${textField('address', 'כתובת *', values.address, 'required', true, values.show_address)}
-        ${textField('city', 'עיר *', values.city, 'required', true, values.show_city)}
-        ${textField('neighborhood', 'שכונה', values.neighborhood, '', true, values.show_neighborhood)}
-        ${textField('rooms', 'חדרים *', values.rooms, 'required inputmode="decimal"', true, values.show_rooms)}
-        ${textField('floor', 'קומה', values.floor, '', true, values.show_floor)}
-        ${textField('sizeSqm', 'מ"ר', values.sizeSqm, 'inputmode="decimal"', true, values.show_sizeSqm)}
-        ${textField('price', 'מחיר *', values.price, 'required inputmode="numeric"', true, values.show_price)}
-        ${textField('vacancyDate', 'תאריך פינוי', values.vacancyDate, '', true, values.show_vacancyDate)}
+        ${textField('address', 'כתובת *', values.address, 'required')}
+        ${textField('city', 'עיר *', values.city, 'required')}
+        ${textField('neighborhood', 'שכונה', values.neighborhood)}
+        ${textField('rooms', 'חדרים *', values.rooms, 'required inputmode="decimal"')}
+        ${textField('floor', 'קומה', values.floor)}
+        ${textField('sizeSqm', 'מ"ר', values.sizeSqm, 'inputmode="decimal"')}
+        ${textField('price', 'מחיר *', values.price, 'required inputmode="numeric"')}
+        ${textField('vacancyDate', 'תאריך פינוי', values.vacancyDate)}
       </div>
       <div class="grid-2">
-        ${parkingChoice(values.parking, values.show_parking)}
-        ${yesNo('elevator', 'מעלית *', values.elevator, true, values.show_elevator)}
-        ${yesNo('balcony', 'מרפסת *', values.balcony, true, values.show_balcony)}
-        ${yesNo('mamad', 'ממ"ד *', values.mamad, true, values.show_mamad)}
+        ${parkingChoice(values.parking)}
+        ${yesNo('elevator', 'מעלית *', values.elevator)}
+        ${yesNo('balcony', 'מרפסת *', values.balcony)}
+        ${yesNo('mamad', 'ממ"ד *', values.mamad)}
       </div>
       ${areaField('featuresText', 'יתרונות לפרסום', values.featuresText)}
-      ${showSelect('featuresText', values.show_featuresText)}
       <section class="private">
         <h2>בעלים, חסוי</h2>
         <div class="grid-2">

@@ -26,8 +26,29 @@ export function disclosureMode(disclosure, key) {
   return DISCLOSURE_MODES.includes(value) ? value : 'say';
 }
 
+const EXPOSE_GROUPS = {
+  price: ['price'],
+  rooms: ['rooms'],
+  floor: ['floor'],
+  size: ['sizeSqm'],
+  address: ['address', 'neighborhood', 'city'],
+  parking: ['parking'],
+  elevator: ['elevator'],
+  mamad: ['mamad'],
+  balcony: ['balcony'],
+  features: ['featuresText'],
+};
+
 export function readDisclosure(source) {
   const next = {};
+  if (source?.exposureForm) {
+    for (const [name, keys] of Object.entries(EXPOSE_GROUPS)) {
+      const raw = source[`expose_${name}`];
+      const on = raw === 'on' || raw === 'true' || raw === true || raw === 'say';
+      for (const key of keys) next[key] = on ? 'say' : 'hide';
+    }
+    return next;
+  }
   for (const [key] of DISCLOSURE_FIELDS) {
     const value = source?.[`show_${key}`];
     if (DISCLOSURE_MODES.includes(value)) next[key] = value;
