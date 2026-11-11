@@ -6,7 +6,7 @@ import { hotLeadSignal } from '../../domain/intents.js';
 import { matchMedia } from '../../domain/tags.js';
 import { prisma } from '../../db.js';
 import { readFlow, recentMessages, rememberInbound, saveFlow } from '../conversationStore.js';
-import { completeLeadTurn, hasOpenAI, summarizeForBroker } from '../openai.js';
+import { brokerShouldHear, completeLeadTurn, hasOpenAI, summarizeForBroker } from '../openai.js';
 import { chooseProperty, formatPropertyChoices, matchPropertyFromText } from '../propertyMatcher.js';
 import { isBotPaused } from '../whatsappMode.js';
 import { fallbackLeadTurn } from './fallback.js';
@@ -346,7 +346,8 @@ export async function handleLead(event) {
   };
   const turn = await answer();
   const noteText = (event.text || '').trim();
-  if (alreadyHot && noteText.length > 12 && property.broker?.phoneNumber) {
+  const alreadyNotified = (turn.notifications || []).length > 0;
+  if (alreadyHot && !alreadyNotified && property.broker?.phoneNumber && await brokerShouldHear(noteText)) {
     const note = `עדכון מהליד ${conversation.contactName || event.from} על ${property.code}:\n${noteText}`;
     turn.notifications = [...(turn.notifications || []), { to: property.broker.phoneNumber, replies: [text(note)] }];
   }

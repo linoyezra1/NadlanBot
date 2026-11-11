@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { ensureMarketingLink, fallbackMarketing } from '../domain/marketing.js';
 import { naturalWaLink, postWaMe } from '../domain/waLink.js';
 import { SYSTEM_PROMPT_POST_GENERATION } from './socialPublisher.js';
+import { hotLeadSignal } from '../domain/intents.js';
 import { highlightsFromTranscript } from '../domain/hotLead.js';
 import { logger } from '../logger.js';
 import { INQUIRY_SYSTEM_PROMPT } from './leads/prompt.js';
@@ -88,6 +89,53 @@ export async function generateInquiryReply({ authorName, question, property, waL
     logger.warn('inquiry reply failed', error.message);
     return null;
   }
+}
+
+export function readViewingDecision(content) {
+  const match = String(content || '').match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]);
+    return typeof parsed.viewing === 'boolean' ? parsed.viewing : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function brokerShouldHear(message, { complete, timeoutMs = INQUIRY_TIMEOUT_MS } = {}) {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  if (!complete && !hasOpenAI()) return hotLeadSignal(text);
+  try {
+    const response = await withDeadline(() => (complete || defaultViewingComplete)(text), timeoutMs);
+    const viewing = readViewingDecision(response?.choices?.[0]?.message?.content);
+    return viewing == null ? hotLeadSignal(text) : viewing;
+  } catch (error) {
+    logger.warn('viewing decision failed', error.message);
+    return hotLeadSignal(text);
+  }
+}
+
+function defaultViewingComplete(message) {
+  return client().chat.completions.create({
+    model: config.openaiModel,
+    temperature: 0,
+    max_tokens: 30,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: [
+          'אתה מחליט אם הודעת ליד מעניינת מתווך נדל"ן.',
+          'החזר JSON בלבד: {"viewing": true} או {"viewing": false}.',
+          'true רק אם הליד רותח ורוצה לראות את הדירה: לבוא, לקבוע ביקור, או לשאול מתי מראים.',
+          'דוגמאות true: "אפשר לראות את הדירה", "מתי אפשר לראות", "אפשר לבוא?", "מתי מראים דירה?"',
+          'false לשאלות על מחיר, חדרים, קומה, כתובת, תמונות, תודה, או בקשת פרטים כללית.',
+        ].join(' '),
+      },
+      { role: 'user', content: message },
+    ],
+  }, { timeout: INQUIRY_TIMEOUT_MS });
 }
 
 function defaultInquiryComplete(messages) {

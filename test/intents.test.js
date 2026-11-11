@@ -18,6 +18,11 @@ test('the ad opener is not a hot lead', () => {
   assert.equal(hotLeadSignal('שלום, אני מעוניין בפרטים על דירה APT-104'), false);
   assert.equal(hotLeadSignal('אני רוצה לבוא לראות'), true);
   assert.equal(hotLeadSignal('אפשר לתאם סיור מחר?'), true);
+  assert.equal(hotLeadSignal('אפשר לראות את הדירה'), true);
+  assert.equal(hotLeadSignal('מתי אפשר לראות'), true);
+  assert.equal(hotLeadSignal('אפשר לבוא?'), true);
+  assert.equal(hotLeadSignal('מתי מראים דירה?'), true);
+  assert.equal(hotLeadSignal('כמה עולה?'), false);
 });
 
 test('recognizes broker commands', () => {

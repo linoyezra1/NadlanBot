@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { INQUIRY_SYSTEM_PROMPT } from '../src/services/leads/prompt.js';
-import { generateInquiryReply, inquiryMessages, propertyFacts } from '../src/services/openai.js';
+import { brokerShouldHear, generateInquiryReply, inquiryMessages, propertyFacts, readViewingDecision } from '../src/services/openai.js';
 
 const property = {
   listingType: 'sale',
@@ -41,6 +41,26 @@ test('the inquiry prompt carries the question, the listing and the WhatsApp link
   assert.equal(body.question, 'אפשר פרטים');
   assert.equal(body.property.rooms, 4);
   assert.match(body.waLink, /wa\.me/);
+});
+
+test('only a viewing request is worth telling the broker', async () => {
+  assert.equal(readViewingDecision('{"viewing": true}'), true);
+  assert.equal(readViewingDecision('{"viewing": false}'), false);
+  const price = await brokerShouldHear('כמה עולה?', {
+    timeoutMs: 30,
+    complete: async () => ({ choices: [{ message: { content: '{"viewing": false}' } }] }),
+  });
+  const visit = await brokerShouldHear('מתי אפשר לראות?', {
+    timeoutMs: 30,
+    complete: async () => ({ choices: [{ message: { content: '{"viewing": true}' } }] }),
+  });
+  const slow = await brokerShouldHear('אפשר לבוא?', {
+    timeoutMs: 30,
+    complete: () => new Promise(() => {}),
+  });
+  assert.equal(price, false);
+  assert.equal(visit, true);
+  assert.equal(slow, true);
 });
 
 test('a slow model falls back and a fast one is logged', async () => {
