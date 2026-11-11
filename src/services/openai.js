@@ -6,6 +6,7 @@ import { SYSTEM_PROMPT_POST_GENERATION } from './socialPublisher.js';
 import { hotLeadSignal } from '../domain/intents.js';
 import { highlightsFromTranscript } from '../domain/hotLead.js';
 import { logger } from '../logger.js';
+import { clientProperty, parkingPhrase } from '../domain/disclosure.js';
 import { INQUIRY_SYSTEM_PROMPT } from './leads/prompt.js';
 
 const INQUIRY_TIMEOUT_MS = 3000;
@@ -26,7 +27,7 @@ export function propertyFacts(property) {
   const amenities = property.amenities || {};
   const advantages = [
     property.featuresText,
-    amenities.parking === true ? 'חניה' : null,
+    parkingPhrase(amenities),
     amenities.elevator === true ? 'מעלית' : null,
     amenities.balcony === true ? 'מרפסת' : null,
     amenities.mamad === true ? 'ממ"ד' : null,
@@ -164,8 +165,9 @@ function publicFields(fields) {
 }
 
 export async function generateMarketing(fields, waLink, broker) {
-  const link = waLink || naturalWaLink(fields) || postWaMe(fields?.code);
-  const fallback = ensureMarketingLink(fallbackMarketing(fields, link, broker), link);
+  const visible = clientProperty(fields, 'post') || fields;
+  const link = waLink || naturalWaLink(visible) || postWaMe(fields?.code);
+  const fallback = ensureMarketingLink(fallbackMarketing(visible, link, broker), link);
   if (!hasOpenAI()) return fallback;
   try {
     const response = await client().chat.completions.create({
@@ -176,7 +178,7 @@ export async function generateMarketing(fields, waLink, broker) {
         {
           role: 'user',
           content: JSON.stringify({
-            property: publicFields(fields),
+            property: Object.fromEntries(Object.entries(publicFields(visible)).filter(([, value]) => value != null && value !== '')),
             broker: {
               name: broker?.businessName || broker?.fullName || null,
               phone: broker?.phoneNumber || null,

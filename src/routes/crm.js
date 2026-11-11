@@ -5,7 +5,7 @@ import { dashboardData, getBroker, getLead, getProperty, listLeads, listProperti
 import { readMultipart, uploadFailure } from '../crm/multipart.js';
 import { brokerFormPage, calendarPage, connectPage, dashboardPage, leadPage, leadsPage, missingPage, propertiesPage, propertyFormPage, propertyPage } from '../crm/render.js';
 import { openBroker } from '../services/brokers.js';
-import { addPropertyFiles, createPropertyFromDraft, officeFields } from '../services/properties.js';
+import { addPropertyFiles, createPropertyFromDraft, officeFields, saveCardSettings } from '../services/properties.js';
 import { gatewayConfigured, platformAuthUrl } from '../services/socialPublisher.js';
 import { crmPublishNotice, crmPublishPopup, publishPropertyChannel } from '../services/social/distribute.js';
 import { publishOnce } from '../crm/publishLock.js';
@@ -189,6 +189,17 @@ router.post('/b/:brokerId/properties/:code/publish', wrap(async (req, res) => {
     notice = error.message || `הפרסום ל${names[platform]} נכשל.`;
   }
   res.redirect(303, `${back}?notice=${encodeURIComponent(notice.slice(0, 500))}`);
+}));
+
+router.post('/b/:brokerId/properties/:code/card', wrap(async (req, res) => {
+  const payload = await formPayload(req);
+  const property = await getProperty(req.params.code);
+  if (!property || property.brokerId !== req.params.brokerId) {
+    res.status(404).type('html').send(missingPage('', 'properties', 'הנכס לא נמצא', 'אין נכס עם הקוד הזה אצל המתווך.'));
+    return;
+  }
+  await saveCardSettings(property, payload.fields);
+  res.redirect(303, `/b/${req.params.brokerId}/properties/${encodeURIComponent(property.code)}?notice=${encodeURIComponent('נשמר מה מותר לומר ללקוח')}`);
 }));
 
 router.post('/b/:brokerId/properties/:code/media', wrap(async (req, res) => {

@@ -23,7 +23,7 @@ test('property facts include the public listing and leave out the owner', () => 
   assert.equal(facts.rooms, 4);
   assert.equal(facts.floor, '5');
   assert.match(facts.address, /בת ים/);
-  assert.equal(facts.advantages.includes('חניה'), true);
+  assert.equal(facts.advantages.includes('חנייה בטאבו'), true);
   assert.equal(JSON.stringify(facts).includes('לא לפרסום'), false);
   assert.equal(JSON.stringify(facts).includes('0500000000'), false);
 });

@@ -2,8 +2,9 @@ import crypto from 'node:crypto';
 import express from 'express';
 import { config } from '../config.js';
 import { brandIconUrl, connectedPage } from '../domain/connectedPage.js';
+import { clientProperty } from '../domain/disclosure.js';
 import { commentWaLink, genericCommentReply, genericPrivateComment, privateCommentMessage, publicCommentReply } from '../domain/waLink.js';
-import { generateInquiryReply } from '../services/openai.js';
+import { generateInquiryReply, propertyFacts } from '../services/openai.js';
 import { prisma } from '../db.js';
 import { text } from '../domain/replies.js';
 import { logger } from '../logger.js';
@@ -124,18 +125,28 @@ async function answerComment(body) {
   }
   const property = await findPropertyForPost(plan.lookupIds);
   if (!property) logger.warn('comment did not match a property', plan.lookupIds.join(' ') || plan.commentId);
-  const waLink = property ? commentWaLink(property) : '';
-  const aiReply = await generateInquiryReply({
+  const postView = property ? clientProperty(property, 'post') : null;
+  const privateView = property ? clientProperty(property, 'private') : null;
+  const waLink = privateView ? commentWaLink(privateView) : '';
+  const publicLink = postView ? commentWaLink(postView) : waLink;
+  const sameFacts = JSON.stringify(propertyFacts(postView)) === JSON.stringify(propertyFacts(privateView));
+  const publicAi = await generateInquiryReply({
     authorName: plan.authorName,
     question: plan.text,
-    property,
+    property: postView,
+    waLink: publicLink,
+  });
+  const privateAi = sameFacts ? publicAi : await generateInquiryReply({
+    authorName: plan.authorName,
+    question: plan.text,
+    property: privateView,
     waLink,
   });
-  const publicMessage = aiReply || (property
-    ? publicCommentReply(property, plan.authorName)
+  const publicMessage = publicAi || (postView
+    ? publicCommentReply(postView, plan.authorName)
     : genericCommentReply(plan.authorName));
-  const privateMessage = aiReply || (property
-    ? privateCommentMessage(property, plan.authorName)
+  const privateMessage = privateAi || (privateView
+    ? privateCommentMessage(privateView, plan.authorName)
     : genericPrivateComment(plan.authorName));
   const tasks = [];
   if (plan.publicPostId) {

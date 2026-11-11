@@ -1,4 +1,5 @@
 import { formatAmenities, formatPrice, formatPublicSummary } from '../../domain/card.js';
+import { HIDDEN_ANSWER } from '../../domain/disclosure.js';
 import { hotLeadSignal } from '../../domain/intents.js';
 import { image, text, video } from '../../domain/replies.js';
 import { matchMedia } from '../../domain/tags.js';
@@ -10,31 +11,31 @@ function isSideQuestion(message) {
 function answerQuestion(card, message) {
   const bits = [];
   if (/מחיר|עולה|כמה עולה|תקציב/.test(message)) {
-    bits.push(card.price != null ? `המחיר המבוקש הוא ${formatPrice(card.price)}.` : 'המחיר לא עודכן אצלי.');
+    bits.push(card.price != null ? `המחיר המבוקש הוא ${formatPrice(card.price)}` : HIDDEN_ANSWER);
   }
   if (/חדר/.test(message)) {
-    bits.push(card.rooms != null ? `בנכס ${card.rooms} חדרים.` : 'מספר החדרים לא מופיע בתעודה.');
+    bits.push(card.rooms != null ? `בנכס ${card.rooms} חדרים` : HIDDEN_ANSWER);
   }
   if (/איפה|כתובת|מיקום|שכונ|עיר/.test(message)) {
     const where = [card.address, card.neighborhood, card.city].filter(Boolean).join(', ');
-    bits.push(where ? `הנכס נמצא ב${where}.` : 'אין לי כתובת מלאה בתעודה.');
+    bits.push(where ? `הנכס נמצא ב${where}` : HIDDEN_ANSWER);
   }
   if (/קומה/.test(message)) {
-    bits.push(card.floor ? `הקומה היא ${card.floor}.` : 'הקומה לא מופיעה בתעודה.');
+    bits.push(card.floor ? `הקומה היא ${card.floor}` : HIDDEN_ANSWER);
   }
   if (/מ["״]ר|גודל|שטח/.test(message)) {
-    bits.push(card.sizeSqm ? `השטח הוא ${card.sizeSqm} מ"ר.` : 'השטח לא מופיע בתעודה.');
+    bits.push(card.sizeSqm ? `השטח הוא ${card.sizeSqm} מ"ר` : HIDDEN_ANSWER);
   }
   if (/חניה|מעלית|מרפסת|ממ["״]ד|ממד/.test(message)) {
-    bits.push(formatAmenities(card.amenities) || 'אין לי פירוט מלא על חניה, מעלית, מרפסת וממ"ד.');
+    bits.push(formatAmenities(card.amenities) || HIDDEN_ANSWER);
   }
   if (/פינוי|כניסה|פנוי/.test(message)) {
-    bits.push(card.vacancyDate ? `תאריך הפינוי: ${card.vacancyDate}.` : 'תאריך הפינוי לא מופיע בתעודה.');
+    bits.push(card.vacancyDate ? `תאריך הפינוי: ${card.vacancyDate}` : HIDDEN_ANSWER);
   }
   if (/ועד|כיוון|ארנונה|עמלה|תיווך/.test(message)) {
-    bits.push('אין לי את הנתון הזה בתעודת הנכס, ואני לא רוצה לנחש. אפשר להעביר את השאלה למתווך בשיחה.');
+    bits.push(HIDDEN_ANSWER);
   }
-  if (bits.length) return bits.join(' ');
+  if (bits.length) return [...new Set(bits)].join('\n');
   const summary = formatPublicSummary(card);
   return `היי, אני כאן עם הדירה. ${summary}\nאפשר לשאול על מחיר, חדרים, מיקום או לבקש תמונות.`;
 }

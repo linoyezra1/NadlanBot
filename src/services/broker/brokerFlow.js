@@ -125,9 +125,10 @@ async function startOnboarding(broker) {
   };
 }
 
-function previewReplies(flow) {
+async function previewReplies(conversation, flow) {
+  const mediaCount = await countConversationMedia(conversation.id);
   return [
-    text(formatDraftCard(flow.fields, flow.code || 'טיוטה')),
+    text(formatDraftCard(flow.fields, flow.code || 'טיוטה', { hasMedia: mediaCount > 0 })),
     buttons('לשמור את הנכס במערכת?', [
       { id: 'save', title: 'שמירת הנכס' },
       { id: 'edit', title: 'עריכה' },
@@ -144,7 +145,7 @@ async function continueDetails(conversation, flow) {
     return [text(questionFor(pending, flow.fields))];
   }
   await saveFlow(conversation.id, { flowStep: 'preview', flow });
-  return previewReplies(flow);
+  return previewReplies(conversation, flow);
 }
 
 async function loadProperty(propertyId) {
@@ -355,7 +356,7 @@ async function editStep(conversation, flow, rawText) {
   }
   flow.fields = mergeExtract(flow.fields, partial);
   await saveFlow(conversation.id, { flowStep: 'preview', flow });
-  return previewReplies(flow);
+  return previewReplies(conversation, flow);
 }
 
 async function previewStep(broker, conversation, flow, rawText, buttonId) {

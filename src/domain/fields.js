@@ -26,6 +26,8 @@ export const FIELD_ORDER = [
   'privateNotes',
 ];
 
+const NOT_ASKED = new Set(['privateNotes']);
+
 const OPTIONAL = new Set([
   'neighborhood',
   'floor',
@@ -79,7 +81,7 @@ export function missingAmenityKeys(amenities) {
 export function parseAmenities(text) {
   const source = String(text || '');
   const rules = [
-    ['parking', /חניה/],
+    ['parking', /חני[הי]ה?|חניון/],
     ['elevator', /מעלית/],
     ['balcony', /מרפסת/],
     ['mamad', /ממ["״׳'`]?ד|ממד/],
@@ -94,6 +96,11 @@ export function parseAmenities(text) {
     if (!match) continue;
     const prefix = source.slice(Math.max(0, match.index - 10), match.index);
     found[key] = !/(אין|בלי|ללא|לא)\s*$/.test(prefix);
+  }
+  if (typeof found.parking === 'boolean') {
+    if (found.parking && /חניון|חניה\s+ל(?:בניין|בנין)|חנייה\s+ל(?:בניין|בנין)/.test(source)) found.parkingKind = 'building';
+    else if (found.parking) found.parkingKind = 'tabu';
+    else found.parkingKind = null;
   }
   return Object.keys(found).length ? found : null;
 }
@@ -189,7 +196,13 @@ export function mergeExtract(fields, partial) {
     for (const key of AMENITY_KEYS) {
       if (typeof partial.amenities[key] === 'boolean') patch[key] = partial.amenities[key];
     }
+    if (partial.amenities.parkingKind === 'tabu' || partial.amenities.parkingKind === 'building') {
+      patch.parkingKind = partial.amenities.parkingKind;
+    }
   }
+  if (partial.parkingKind === 'tabu' || partial.parkingKind === 'building') patch.parkingKind = partial.parkingKind;
+  if (patch.parking === true && patch.parkingKind !== 'building') patch.parkingKind = patch.parkingKind || 'tabu';
+  if (patch.parking === false) patch.parkingKind = null;
   if (Object.keys(patch).length) next.amenities = { ...(next.amenities || {}), ...patch };
   return next;
 }
@@ -207,7 +220,7 @@ export function extractedCount(partial) {
 
 export function nextField(fields, skipped = []) {
   for (const key of FIELD_ORDER) {
-    if (skipped.includes(key)) continue;
+    if (skipped.includes(key) || NOT_ASKED.has(key)) continue;
     if (key === 'amenities') {
       if (missingAmenityKeys(fields.amenities).length) return key;
       continue;
@@ -221,8 +234,9 @@ export function questionFor(key, fields) {
   if (key === 'amenities') {
     const missing = missingAmenityKeys(fields?.amenities).map((item) => AMENITY_LABELS[item]);
     if (missing.length === AMENITY_KEYS.length) {
-      return 'יש חניה, מעלית, מרפסת וממ"ד? אפשר במשפט אחד, למשל: יש חניה ומעלית, אין מרפסת, יש ממ"ד.';
+      return 'יש חניה בטאבו, חניון לבניין, או אין חניה? ואפשר להוסיף מעלית, מרפסת וממ"ד, למשל: יש חניה ומעלית, אין מרפסת, יש ממ"ד.';
     }
+    if (missing.length === 1 && missing[0] === 'חניה') return 'יש חניה בטאבו, חניון לבניין, או אין חניה?';
     return `עדיין חסר לי: ${missing.join(', ')}. יש או אין?`;
   }
   const questions = {
@@ -256,7 +270,10 @@ export function assignAnswer(fields, key, text) {
   if (key === 'amenities') {
     const missing = missingAmenityKeys(fields.amenities);
     if (missing.length === 1 && /^(כן|יש|נכון)$/.test(source)) {
-      return { fields: { ...fields, amenities: { ...(fields.amenities || {}), [missing[0]]: true } } };
+      const added = missing[0] === 'parking'
+        ? { parking: true, parkingKind: 'tabu' }
+        : { [missing[0]]: true };
+      return { fields: { ...fields, amenities: { ...(fields.amenities || {}), ...added } } };
     }
     if (missing.length === 1 && /^(לא|אין)$/.test(source)) {
       return { fields: { ...fields, amenities: { ...(fields.amenities || {}), [missing[0]]: false } } };

@@ -54,6 +54,7 @@ model Property {
   sizeSqm       Float?
   price         Int?
   amenities     Json?
+  disclosure    Json?
   vacancyDate   String?
   featuresText  String?
   listingType   String?

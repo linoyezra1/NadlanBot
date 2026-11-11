@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { applyParkingChoice, readDisclosure } from '../domain/disclosure.js';
 import { AMENITY_KEYS, AMENITY_LABELS, blankFields, coerceField, missingAmenityKeys } from '../domain/fields.js';
 import { prisma } from '../db.js';
 import { storeBuffer } from './storage.js';
@@ -17,6 +18,7 @@ export async function createPropertyFromDraft({ brokerId, fields }) {
       sizeSqm: fields.sizeSqm,
       price: fields.price,
       amenities: fields.amenities || {},
+      disclosure: fields.disclosure || undefined,
       vacancyDate: fields.vacancyDate,
       featuresText: fields.featuresText,
       listingType: fields.listingType,
@@ -89,10 +91,13 @@ export function officeFields(input) {
   for (const key of OFFICE_KEYS) fields[key] = coerceField(key, source[key]);
   const amenities = {};
   for (const key of AMENITY_KEYS) {
+    if (key === 'parking') continue;
     if (source[key] === 'yes') amenities[key] = true;
     else if (source[key] === 'no') amenities[key] = false;
   }
+  Object.assign(amenities, applyParkingChoice(amenities, source.parking));
   fields.amenities = amenities;
+  fields.disclosure = readDisclosure(source);
   const errors = [];
   if (!fields.listingType) errors.push('חסר למכירה או להשכרה.');
   if (!fields.address) errors.push('חסרה כתובת.');
@@ -110,6 +115,17 @@ function mediaKind(file) {
   if (mime.startsWith('video/') || /\.(mp4|mov|webm)$/i.test(name)) return 'video';
   if (mime.startsWith('image/') || /\.(jpe?g|png|webp|gif)$/i.test(name)) return 'image';
   return null;
+}
+
+export function saveCardSettings(property, input) {
+  const amenities = applyParkingChoice(property.amenities, input?.parking);
+  return prisma.property.update({
+    where: { id: property.id },
+    data: {
+      amenities,
+      disclosure: { ...(property.disclosure || {}), ...readDisclosure(input) },
+    },
+  });
 }
 
 export async function addPropertyFiles(propertyId, files) {

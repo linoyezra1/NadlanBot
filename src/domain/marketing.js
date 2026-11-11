@@ -1,3 +1,4 @@
+import { parkingPhrase } from './disclosure.js';
 import { parseListingType } from './fields.js';
 import { postWaMe } from './waLink.js';
 
@@ -18,7 +19,8 @@ function amenityLine(amenities) {
   if (!amenities) return '';
   const bits = [];
   if (amenities.balcony) bits.push('מרפסת');
-  if (amenities.parking) bits.push('חניה');
+  const parking = parkingPhrase(amenities);
+  if (parking) bits.push(parking);
   if (amenities.mamad) bits.push('ממ"ד');
   if (amenities.elevator) bits.push('מעלית');
   return bits.join(', ');

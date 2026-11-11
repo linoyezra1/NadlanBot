@@ -1,3 +1,5 @@
+import { parkingPhrase } from './disclosure.js';
+
 export function formatPrice(price) {
   if (price == null || price === '') return 'לא צוין';
   return `${new Intl.NumberFormat('he-IL').format(price)} ₪`;
@@ -10,7 +12,6 @@ export function formatAmenities(amenities) {
 function formatAmenityLine(amenities) {
   if (!amenities) return null;
   const labels = [
-    ['parking', 'חניה'],
     ['elevator', 'מעלית'],
     ['balcony', 'מרפסת'],
     ['mamad', 'ממ"ד'],
@@ -21,11 +22,12 @@ function formatAmenityLine(amenities) {
     if (amenities[key] === true) yes.push(label);
     if (amenities[key] === false) no.push(label);
   }
-  if (!yes.length && !no.length) return null;
-  return [
+  const parts = [
+    parkingPhrase(amenities),
     yes.length ? `יש ${yes.join(', ')}` : null,
     no.length ? `אין ${no.join(', ')}` : null,
-  ].filter(Boolean).join(' · ');
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
 }
 
 export function toPublicCard(property) {
@@ -75,7 +77,7 @@ function placeLine(fields) {
   return [fields.neighborhood, fields.city].filter(Boolean).join(', ');
 }
 
-export function formatDraftCard(fields, code = 'טיוטה') {
+export function formatDraftCard(fields, code = 'טיוטה', { hasMedia = true } = {}) {
   const amenityLine = formatAmenityLine(fields.amenities);
   const facts = [
     fields.rooms != null ? `${fields.rooms} חדרים` : null,
@@ -91,6 +93,7 @@ export function formatDraftCard(fields, code = 'טיוטה') {
     amenityLine ? `✅ ${amenityLine}` : null,
     fields.vacancyDate ? `🗓️ פינוי: ${fields.vacancyDate}` : null,
     fields.featuresText ? `✨ ${fields.featuresText}` : null,
+    hasMedia ? null : 'יש לשים תמונות',
     '',
     '🔒 פרטי בעלים (חסוי, לא מוצג ללקוחות ולא נשלח לבוט):',
     `שם: ${fields.ownerName || 'לא צוין'}`,

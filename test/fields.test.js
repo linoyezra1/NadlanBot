@@ -20,10 +20,13 @@ test('parses prices and amenities', () => {
   assert.equal(parsePrice('950 אלף'), 950000);
   assert.deepEqual(parseAmenities('יש חניה ומעלית, אין מרפסת, יש ממ"ד'), {
     parking: true,
+    parkingKind: 'tabu',
     elevator: true,
     balcony: false,
     mamad: true,
   });
+  assert.equal(parseAmenities('יש חניון לבניין').parkingKind, 'building');
+  assert.equal(parseAmenities('אין חניה').parking, false);
 });
 
 test('a single broker message fills the property card', () => {
@@ -36,7 +39,7 @@ test('a single broker message fills the property card', () => {
   assert.equal(fields.floor, '2');
   assert.equal(fields.sizeSqm, 82);
   assert.equal(fields.price, 2450000);
-  assert.deepEqual(fields.amenities, { parking: true, elevator: true, balcony: true, mamad: true });
+  assert.deepEqual(fields.amenities, { parking: true, parkingKind: 'tabu', elevator: true, balcony: true, mamad: true });
   assert.equal(fields.vacancyDate, 'מיידי');
   assert.match(fields.featuresText, /משופצת/);
   assert.equal(fields.ownerName, 'ישראל כהן');

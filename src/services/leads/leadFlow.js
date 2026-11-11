@@ -1,4 +1,5 @@
 import { toPublicCard } from '../../domain/card.js';
+import { clientProperty } from '../../domain/disclosure.js';
 import { formatHotLead } from '../../domain/hotLead.js';
 import { text } from '../../domain/replies.js';
 import { image, video } from '../../domain/replies.js';
@@ -327,7 +328,7 @@ export async function handleLead(event) {
     return { replies: [clarify()], notifications: [], conversationId: conversation.id };
   }
 
-  const card = toPublicCard(property);
+  const card = toPublicCard(clientProperty(property, 'private'));
   const answer = async () => {
     if (!hasOpenAI()) return runFallback({ conversation, property, card, event });
     try {

@@ -1,3 +1,4 @@
+import { DISCLOSURE_FIELDS, disclosureMode } from '../../domain/disclosure.js';
 import { planPosts } from '../../domain/plan.js';
 import { TIKTOK_CRM_NOTICE, TIKTOK_WA_LINE } from '../../domain/tiktokVideo.js';
 import { forwardCard, groupShareMessage } from '../../domain/share.js';
@@ -159,8 +160,10 @@ export function crmPublishNotice(outcome) {
 
 export async function publishPropertyChannel(broker, property, platform) {
   const waLink = naturalWaLink(property) || clickToWhatsAppLink(property.code);
-  const caption = property.marketingText
-    || await generateMarketing({ ...property, code: property.code }, waLink, broker);
+  const restricted = DISCLOSURE_FIELDS.some(([key]) => disclosureMode(property.disclosure, key) !== 'say');
+  const caption = !restricted && property.marketingText
+    ? property.marketingText
+    : await generateMarketing({ ...property, code: property.code }, waLink, broker);
   return distribute({
     broker,
     property,
