@@ -77,16 +77,27 @@ function ensureWaLink(answer, waLink) {
 }
 
 export async function generateInquiryReply({ authorName, question, property, waLink, recent, complete, timeoutMs = INQUIRY_TIMEOUT_MS } = {}) {
-  if (!complete && !hasOpenAI()) return null;
+  const userText = question || '';
+  console.log('Calling OpenAI with prompt for:', userText);
+  if (!complete && !hasOpenAI()) {
+    console.error('OpenAI failed, falling back:', 'OPENAI_API_KEY is empty');
+    return null;
+  }
+  const started = Date.now();
   try {
     const response = await withDeadline(() => (complete || defaultInquiryComplete)(
       inquiryMessages({ authorName, question, property, waLink, recent }),
     ), timeoutMs);
     const answer = ensureWaLink(response?.choices?.[0]?.message?.content, waLink);
-    if (!answer) return null;
+    if (!answer) {
+      console.error('OpenAI failed, falling back:', 'empty response');
+      return null;
+    }
+    console.log('OpenAI answered in', Date.now() - started, 'ms:', answer);
     console.log('AI response generated for:', authorName);
     return answer;
   } catch (error) {
+    console.error('OpenAI failed, falling back:', error.message);
     logger.warn('inquiry reply failed', error.message);
     return null;
   }

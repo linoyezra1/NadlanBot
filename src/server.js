@@ -59,6 +59,7 @@ export async function startServer() {
   for (const warning of integrationWarnings()) logger.warn(warning);
   const app = createApp();
   const server = app.listen(config.port, () => {
+    console.log('OpenAI API Key exists:', !!process.env.OPENAI_API_KEY);
     logger.info(`NadlanBot listening on ${config.port}`);
     ensureCommentWebhook().catch((error) => logger.error('comment webhook setup failed', error.message));
   });

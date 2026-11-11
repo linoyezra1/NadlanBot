@@ -330,10 +330,20 @@ export async function handleLead(event) {
 
   const card = toPublicCard(clientProperty(property, 'private'));
   const answer = async () => {
-    if (!hasOpenAI()) return runFallback({ conversation, property, card, event });
+    const userText = event.text || '';
+    console.log('Calling OpenAI with prompt for:', userText);
+    const started = Date.now();
+    if (!hasOpenAI()) {
+      console.error('OpenAI failed, falling back:', 'OPENAI_API_KEY is empty');
+      return runFallback({ conversation, property, card, event });
+    }
     try {
-      return await runModel({ conversation, property, card, event });
+      const turn = await runModel({ conversation, property, card, event });
+      const aiResponse = (turn.replies || []).map((reply) => reply.text).filter(Boolean).join('\n');
+      console.log('OpenAI answered in', Date.now() - started, 'ms:', aiResponse);
+      return turn;
     } catch (error) {
+      console.error('OpenAI failed, falling back:', error.message);
       const fresh = await prisma.conversation.findUnique({ where: { id: conversation.id } });
       if (!alreadyHot && fresh?.status === 'converted_hot_lead') {
         return {
