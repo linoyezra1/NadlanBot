@@ -9,7 +9,9 @@ import { logger } from '../logger.js';
 import { clientProperty, parkingPhrase } from '../domain/disclosure.js';
 import { INQUIRY_SYSTEM_PROMPT } from './leads/prompt.js';
 
-const INQUIRY_TIMEOUT_MS = 3000;
+const REPLY_MODEL = 'gpt-4o-mini';
+const INQUIRY_TIMEOUT_MS = 8000;
+const REPLY_MAX_TOKENS = 150;
 
 export function hasOpenAI() {
   return Boolean(process.env.OPENAI_API_KEY || config.openaiApiKey);
@@ -130,7 +132,7 @@ export async function brokerShouldHear(message, { complete, timeoutMs = INQUIRY_
 
 function defaultViewingComplete(message) {
   return client().chat.completions.create({
-    model: config.openaiModel,
+    model: REPLY_MODEL,
     temperature: 0,
     max_tokens: 30,
     response_format: { type: 'json_object' },
@@ -152,9 +154,9 @@ function defaultViewingComplete(message) {
 
 function defaultInquiryComplete(messages) {
   return client().chat.completions.create({
-    model: config.openaiModel,
+    model: REPLY_MODEL,
     temperature: 0.5,
-    max_tokens: 180,
+    max_tokens: REPLY_MAX_TOKENS,
     messages,
   }, { timeout: INQUIRY_TIMEOUT_MS });
 }
@@ -260,8 +262,9 @@ export async function summarizeForBroker({ card, messages, leadName, preferredTi
 
 export async function completeLeadTurn({ messages, tools }) {
   return client().chat.completions.create({
-    model: config.openaiModel,
+    model: REPLY_MODEL,
     temperature: 0.4,
+    max_tokens: REPLY_MAX_TOKENS,
     messages,
     tools,
   }, { timeout: INQUIRY_TIMEOUT_MS });
