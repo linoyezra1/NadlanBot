@@ -133,6 +133,8 @@ model Conversation {
   @@index([brokerPhone, status])
   @@index([brokerId, status])
   @@index([propertyId])
+  @@index([propertyId, updatedAt])
+  @@index([brokerId, updatedAt])
 }
 
 model Message {
@@ -190,6 +192,7 @@ model Publication {
   createdAt  DateTime @default(now())
 
   @@index([propertyId])
+  @@index([propertyId, createdAt])
 }
 
 model SocialPost {
@@ -209,6 +212,7 @@ model SocialPost {
 
   @@index([brokerId])
   @@index([propertyId])
+  @@index([brokerId, publishedAt])
 }
 
 model SocialComment {

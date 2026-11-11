@@ -1,12 +1,25 @@
 import { prisma } from '../db.js';
 
+const PAGE = 20;
+
 const leadListInclude = {
   property: { select: { code: true, address: true, city: true, neighborhood: true, price: true } },
   messages: {
     where: { sender: 'bot' },
     orderBy: { timestamp: 'desc' },
     take: 1,
+    select: { text: true },
   },
+};
+
+const leadCardSelect = {
+  id: true,
+  status: true,
+  leadPhone: true,
+  contactName: true,
+  summary: true,
+  updatedAt: true,
+  botPausedUntil: true,
 };
 
 function leadWhere(brokerId, extra = {}) {
@@ -47,15 +60,14 @@ export async function dashboardData(brokerId) {
       orderBy: { createdAt: 'desc' },
       take: 4,
       include: {
-        media: { orderBy: { createdAt: 'asc' }, take: 1 },
-        conversations: { where: { role: 'lead' }, select: { id: true, status: true } },
-        _count: { select: { socialPosts: true } },
+        media: { orderBy: { createdAt: 'asc' }, take: 1, select: { cloudUrl: true } },
+        _count: { select: { socialPosts: true, conversations: true } },
       },
     }),
     prisma.conversation.findMany({
       where: leadWhere(brokerId, { status: 'converted_hot_lead' }),
       orderBy: { updatedAt: 'desc' },
-      take: 6,
+      take: PAGE,
       include: leadListInclude,
     }),
   ]);
@@ -78,10 +90,8 @@ export function listProperties(q, brokerId) {
     where,
     orderBy: { createdAt: 'desc' },
     include: {
-      media: { orderBy: { createdAt: 'asc' } },
-      broker: true,
-      conversations: { where: { role: 'lead' }, select: { id: true, status: true } },
-      _count: { select: { socialPosts: true } },
+      media: { orderBy: { createdAt: 'asc' }, take: 1, select: { cloudUrl: true } },
+      _count: { select: { socialPosts: true, conversations: true } },
     },
   });
 }
@@ -90,17 +100,20 @@ export function getProperty(code) {
   return prisma.property.findUnique({
     where: { code },
     include: {
-      media: { orderBy: { createdAt: 'asc' } },
+      media: { orderBy: { createdAt: 'asc' }, take: 40 },
       owner: true,
-      broker: true,
-      publications: { orderBy: { createdAt: 'desc' } },
+      broker: { select: { id: true, fullName: true, businessName: true, phoneNumber: true } },
+      publications: { orderBy: { createdAt: 'desc' }, take: PAGE },
       socialPosts: {
         orderBy: { publishedAt: 'desc' },
-        include: { comments: { where: { isOwnAccount: false }, select: { id: true } } },
+        take: PAGE,
+        include: { _count: { select: { comments: true } } },
       },
       conversations: {
         where: { role: 'lead' },
         orderBy: { updatedAt: 'desc' },
+        take: PAGE,
+        select: leadCardSelect,
       },
     },
   });
@@ -114,6 +127,7 @@ export function listLeads(filter, brokerId) {
   return prisma.conversation.findMany({
     where,
     orderBy: { updatedAt: 'desc' },
+    take: PAGE,
     include: leadListInclude,
   });
 }
@@ -126,26 +140,26 @@ export function listBrokers() {
 }
 
 export function getBroker(id) {
-  return prisma.broker.findUnique({
-    where: { id },
-    include: {
-      properties: {
-        orderBy: { createdAt: 'desc' },
-        include: {
-          media: { orderBy: { createdAt: 'asc' }, take: 1 },
-          conversations: { where: { role: 'lead' }, select: { id: true, status: true } },
-        },
-      },
-    },
-  });
+  return prisma.broker.findUnique({ where: { id } });
 }
 
-export function getLead(id, brokerId) {
-  return prisma.conversation.findFirst({
+export async function getLead(id, brokerId) {
+  const lead = await prisma.conversation.findFirst({
     where: leadWhere(brokerId, { id }),
     include: {
-      property: { include: { media: { orderBy: { createdAt: 'asc' }, take: 8 } } },
-      messages: { orderBy: { timestamp: 'asc' } },
+      property: {
+        select: {
+          code: true,
+          address: true,
+          city: true,
+          neighborhood: true,
+          price: true,
+          media: { orderBy: { createdAt: 'asc' }, take: 1, select: { cloudUrl: true } },
+        },
+      },
+      messages: { orderBy: { timestamp: 'desc' }, take: PAGE },
     },
   });
+  if (lead?.messages) lead.messages.reverse();
+  return lead;
 }

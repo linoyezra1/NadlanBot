@@ -39,7 +39,8 @@ function propertyCard(property, token, base = '') {
   const cover = property.media?.[0];
   const [statusLabel, tone] = propertyStatus(property.status);
   const leads = property.conversations || [];
-  const hot = leads.filter((lead) => lead.status === 'converted_hot_lead').length;
+  const leadCount = property._count?.conversations ?? leads.length;
+  const hot = leads.length === leadCount ? leads.filter((lead) => lead.status === 'converted_hot_lead').length : 0;
   const deal = property.listingType === 'rent' ? 'להשכרה' : property.listingType === 'sale' ? 'למכירה' : null;
   const parking = property.amenities?.parking === true ? (parkingPhrase(property.amenities) || 'חניה') : null;
   const bits = [
@@ -59,7 +60,7 @@ function propertyCard(property, token, base = '') {
         <div>${escapeHtml(property.address || place(property) || 'כתובת לא הוזנה')}</div>
         <div class="muted">${escapeHtml(place(property))}</div>
         <div class="facts">${bits.map((bit) => `<span class="chip">${escapeHtml(bit)}</span>`).join('')}</div>
-        <div class="muted">${leads.length} לידים${hot ? ` · ${hot} חמים` : ''}${(property._count?.socialPosts || 0) ? ` · ${property._count.socialPosts} פורסמו` : ''}</div>
+        <div class="muted">${leadCount} לידים${hot ? ` · ${hot} חמים` : ''}${(property._count?.socialPosts || 0) ? ` · ${property._count.socialPosts} פורסמו` : ''}</div>
       </div>
     </a>
     <div class="card-actions">
@@ -296,7 +297,7 @@ export function propertyPage(token, property, notice = '', base = '', subtitle =
     ? `<ul>${property.publications.map((item) => `<li>${escapeHtml(publicationLine(item))}</li>`).join('')}</ul>`
     : '<p class="muted">הנכס עוד לא נשלח לרשתות.</p>';
   const posted = (property.socialPosts || []).length
-    ? `<ul>${property.socialPosts.map((post) => `<li><a href="${href(token, `${base}/social-feed?property=${encodeURIComponent(property.code)}`)}">${escapeHtml(hebrewPlatform(post.platform))} · ${escapeHtml(formatWhen(post.publishedAt))} · ${(post.comments || []).length} תגובות</a></li>`).join('')}</ul>`
+    ? `<ul>${property.socialPosts.map((post) => `<li><a href="${href(token, `${base}/social-feed?property=${encodeURIComponent(property.code)}`)}">${escapeHtml(hebrewPlatform(post.platform))} · ${escapeHtml(formatWhen(post.publishedAt))} · ${post._count?.comments || (post.comments || []).length} תגובות</a></li>`).join('')}</ul>`
     : '<p class="muted">אחרי פרסום מוצלח הפוסט יופיע כאן עם התגובות.</p>';
   return page(token, property.code, 'properties', `
     <header class="page-head">

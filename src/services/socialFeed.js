@@ -147,31 +147,63 @@ export async function backfillSocialPosts(brokerId) {
 }
 
 async function copyPublishedPosts(brokerId) {
-  const publications = await prisma.publication.findMany({
-    where: {
-      property: { brokerId },
-      status: { in: ['published', 'processing'] },
-      platform: { in: [...FEED_PLATFORMS] },
-      postId: { not: null },
-    },
-    select: {
-      propertyId: true,
-      platform: true,
-      postId: true,
-      postUrl: true,
-      caption: true,
-    },
-  });
+  const [publications, existing] = await Promise.all([
+    prisma.publication.findMany({
+      where: {
+        property: { brokerId },
+        status: { in: ['published', 'processing'] },
+        platform: { in: [...FEED_PLATFORMS] },
+        postId: { not: null },
+      },
+      select: {
+        propertyId: true,
+        platform: true,
+        postId: true,
+        postUrl: true,
+        caption: true,
+        property: {
+          select: {
+            media: {
+              where: { mediaType: 'image' },
+              orderBy: { createdAt: 'asc' },
+              take: 1,
+              select: { cloudUrl: true },
+            },
+          },
+        },
+      },
+    }),
+    prisma.socialPost.findMany({
+      where: { brokerId },
+      select: { platformPostId: true },
+    }),
+  ]);
+  const seen = new Set(existing.map((post) => post.platformPostId));
+  const rows = [];
   for (const item of publications) {
-    await rememberPublished({
+    const platformPostId = storedPostId({
+      platform: item.platform,
+      platformPostId: item.postId,
+      zernioPostId: '',
+    });
+    if (!platformPostId || seen.has(platformPostId)) continue;
+    seen.add(platformPostId);
+    rows.push({
       brokerId,
       propertyId: item.propertyId,
-      platform: item.platform,
-      postId: item.postId,
-      postUrl: item.postUrl,
-      caption: item.caption,
-    }).catch(() => null);
+      platform: String(item.platform || '').toLowerCase(),
+      platformPostId,
+      content: item.caption || '',
+      imageUrl: item.property?.media?.[0]?.cloudUrl || null,
+      permalink: item.postUrl || null,
+    });
   }
+  if (rows.length) await prisma.socialPost.createMany({ data: rows, skipDuplicates: true });
+}
+
+export async function backfillAllSocialPosts() {
+  const brokers = await prisma.broker.findMany({ select: { id: true } });
+  for (const broker of brokers) await backfillSocialPosts(broker.id);
 }
 
 export async function rememberPublished({
@@ -232,17 +264,19 @@ export async function rememberComment(body, extras = {}) {
   return saved;
 }
 
-export function listSocialPosts(brokerId, propertyCode) {
+export async function listSocialPosts(brokerId, propertyCode) {
   const where = { brokerId };
   const code = textOf(propertyCode);
   if (code) where.property = { code };
-  return prisma.socialPost.findMany({
+  const posts = await prisma.socialPost.findMany({
     where,
     orderBy: { publishedAt: 'desc' },
+    take: 20,
     include: {
       comments: {
         where: { isOwnAccount: false },
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
       },
       property: {
         select: {
@@ -251,6 +285,8 @@ export function listSocialPosts(brokerId, propertyCode) {
           city: true,
           conversations: {
             where: { role: 'lead' },
+            orderBy: { updatedAt: 'desc' },
+            take: 20,
             select: { contactName: true, leadPhone: true },
           },
         },
@@ -258,4 +294,5 @@ export function listSocialPosts(brokerId, propertyCode) {
       broker: { select: { fullName: true, businessName: true } },
     },
   });
+  return posts.map((post) => ({ ...post, comments: [...post.comments].reverse() }));
 }

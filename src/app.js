@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { integrationStatus } from './config.js';
-import { prisma } from './db.js';
+import { pageTiming, prisma } from './db.js';
 import { uploadsDir } from './services/storage.js';
 import adminRouter from './routes/admin.js';
 import crmRouter from './routes/crm.js';
@@ -28,6 +28,15 @@ export function createApp() {
     } catch (error) {
       res.status(503).json({ ok: false, db: false, error: error.message });
     }
+  });
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || !req.path.startsWith('/b/')) return next();
+    const timing = { db: 0, started: Date.now() };
+    res.on('finish', () => {
+      const total = Date.now() - timing.started;
+      console.log('page', req.method, req.path, 'db', timing.db, 'ms', 'render', Math.max(0, total - timing.db), 'ms', 'total', total, 'ms');
+    });
+    pageTiming.run(timing, () => next());
   });
   app.use(crmRouter);
   app.use(adminRouter);
